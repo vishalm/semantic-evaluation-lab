@@ -144,14 +144,15 @@ class ConversationChainTaskSet(TaskSet):
     def _record_locust_response(self, task_name: str, result: LoadTestResult):
         """Record response in Locust statistics."""
         if result.success:
-            events.request_success.fire(
+            events.request.fire(
                 request_type="LLM",
                 name=task_name,
                 response_time=result.response_time,
-                response_length=result.conversation_length or 0
+                response_length=result.conversation_length or 0,
+                exception=None
             )
         else:
-            events.request_failure.fire(
+            events.request.fire(
                 request_type="LLM",
                 name=task_name,
                 response_time=result.response_time,
@@ -161,7 +162,7 @@ class ConversationChainTaskSet(TaskSet):
     
     def _record_failure(self, task_name: str, error_msg: str):
         """Record a task failure in Locust statistics."""
-        events.request_failure.fire(
+        events.request.fire(
             request_type="LLM",
             name=task_name,
             response_time=0,
@@ -215,14 +216,15 @@ class SingleQueryTaskSet(TaskSet):
     def _record_locust_response(self, task_name: str, result: LoadTestResult):
         """Record response in Locust statistics."""
         if result.success:
-            events.request_success.fire(
+            events.request.fire(
                 request_type="LLM",
                 name=task_name,
                 response_time=result.response_time,
-                response_length=len(result.test_cases[0].actual_output) if result.test_cases else 0
+                response_length=len(result.test_cases[0].actual_output) if result.test_cases else 0,
+                exception=None
             )
         else:
-            events.request_failure.fire(
+            events.request.fire(
                 request_type="LLM",
                 name=task_name,
                 response_time=result.response_time,
@@ -232,7 +234,7 @@ class SingleQueryTaskSet(TaskSet):
     
     def _record_failure(self, task_name: str, error_msg: str):
         """Record a task failure in Locust statistics."""
-        events.request_failure.fire(
+        events.request.fire(
             request_type="LLM",
             name=task_name,
             response_time=0,
@@ -349,18 +351,14 @@ def on_test_start(environment, **kwargs):
     print(f"{'='*60}\n")
 
 
-@events.request_success.add_listener  
-def on_request_success(request_type, name, response_time, response_length, **kwargs):
-    """Event handler for successful requests."""
+@events.request.add_listener  
+def on_request(request_type, name, response_time, response_length, exception, **kwargs):
+    """Event handler for all requests."""
     if request_type == "LLM":
-        logger.debug(f"LLM request succeeded: {name} - {response_time:.2f}ms")
-
-
-@events.request_failure.add_listener
-def on_request_failure(request_type, name, response_time, response_length, exception, **kwargs):
-    """Event handler for failed requests."""
-    if request_type == "LLM":
-        logger.warning(f"LLM request failed: {name} - {exception}")
+        if exception:
+            logger.warning(f"LLM request failed: {name} - {exception}")
+        else:
+            logger.debug(f"LLM request succeeded: {name} - {response_time:.2f}ms")
 
 
 if __name__ == "__main__":

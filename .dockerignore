@@ -1,4 +1,4 @@
-# Docker ignore file for Semantic Kernel Demo
+# Docker ignore file for Semantic Evaluation Lab
 
 # Version control
 .git
@@ -70,6 +70,7 @@ coverage.xml
 docs/
 *.md
 !README.md
+!TESTING.md
 
 # Configuration files (use env.example instead)
 .env
@@ -77,10 +78,14 @@ docs/
 
 # Test artifacts
 .deepeval/
+.deepeval_cache/
 bandit-report.json
 test-results.xml
 *-test-results.xml
 *-test-report.html
+*-conversation-*.json
+*-locust-*.html
+*-locust-*.csv
 
 # Docker
 Dockerfile*
@@ -91,9 +96,11 @@ docker-compose*.yml
 .github/
 sonar-project.properties
 
-# Ollama data
+# Ollama data and models
 ollama-models/
+ollama_data/
 *.gguf
+*.bin
 
 # Development tools
 .cursor/
@@ -117,14 +124,94 @@ temp/
 *.tar.bz2
 *.rar
 
+# Semantic Evaluation Lab specific exclusions
+# ===============================================
+
+# Monitoring and metrics data (generated at runtime)
+prometheus_data/
+grafana_data/
+prometheus_metrics/
+*.prom
+*.metrics
+
+# Load testing artifacts
+locust_reports/
+load_test_results/
+conversation_metrics/
+performance_reports/
+
+# AI/ML model cache and artifacts
+.huggingface/
+.transformers_cache/
+model_cache/
+*.pickle
+*.pkl
+*.joblib
+
+# DeepEval specific
+confidence_ai_cache/
+deepeval_results/
+evaluation_cache/
+
+# Web UI generated files
+static/dist/
+static/build/
+*.bundle.js
+*.bundle.css
+
+# Runtime data directories (created by containers)
+data/
+runtime/
+storage/
+
+# Database files (if any)
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# macOS specific
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows specific
+desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# Linux specific
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
 # Keep these files for Docker build
 !requirements.txt
 !config.py
 !logging_config.py
+!prometheus_exporter.py
+!web_ui.py
 !basic_agent.py
 !basic_agent_ollama.py
 !env.example
 !pytest.ini
 !pyproject.toml
 !tests/
-!Makefile 
+!Makefile
+!prometheus.yml 

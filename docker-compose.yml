@@ -638,7 +638,11 @@ services:
       <<: *monitoring-variables
       SERVICE_NAME: metrics-exporter
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_metrics
-    command: ["python", "prometheus_exporter.py"]
+    command: |
+      sh -c "
+        mkdir -p /tmp/prometheus_metrics &&
+        python prometheus_exporter.py
+      "
     depends_on:
       - ollama
     networks:
@@ -649,6 +653,7 @@ services:
       - dev
       - all
       - load-test
+      - load-test-headless
     restart: unless-stopped
 
   # Prometheus monitoring
