@@ -40,6 +40,9 @@ A comprehensive **laboratory for evaluating, testing, and monitoring Semantic Ke
 
 **Semantic Evaluation Lab** serves as a comprehensive research and development environment for advancing AI evaluation methodologies. It addresses critical challenges in enterprise AI deployment:
 
+![Platform 1](resources/pictures/Res1.png)
+![Platform 2](resources/pictures/Res2.png)
+
 ### **🎯 Primary Objectives**
 
 1. **🔬 Research Platform**: Advance the state-of-the-art in LLM evaluation methodologies
