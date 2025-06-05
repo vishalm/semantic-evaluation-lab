@@ -900,172 +900,67 @@ async def root():
                                                     <span className="font-medium capitalize">{test.type} Tests</span>
                                                     <div className="text-sm text-gray-500">
                                                         {new Date(test.timestamp).toLocaleTimeString()}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                                    test.status === 'success' ? 'bg-green-100 text-green-800' :
-                                                    test.status === 'error' ? 'bg-red-100 text-red-800' :
-                                                    'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                    {test.status.toUpperCase()}
-                                                </span>
-                                            </div>
-                                        </div>
                                     </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        function TestCard({ title, description, icon, color, endpoint, onResult }) {
-            const [running, setRunning] = useState(false);
-            const [progress, setProgress] = useState(0);
-
-            const runTest = async () => {
-                setRunning(true);
-                setProgress(0);
-                
-                const progressInterval = setInterval(() => {
-                    setProgress(prev => {
-                        const newProgress = prev + Math.random() * 20;
-                        return newProgress > 90 ? 90 : newProgress;
-                    });
-                }, 200);
-
-                try {
-                    const response = await fetch(`/api${endpoint}`, { method: 'POST' });
-                    const result = await response.json();
-                    
-                    clearInterval(progressInterval);
-                    setProgress(100);
-                    
-                    if (onResult) {
-                        onResult(result);
-                    }
-                    
-                    setTimeout(() => {
-                        setProgress(0);
-                    }, 2000);
-                    
-                } catch (error) {
-                    clearInterval(progressInterval);
-                    setProgress(0);
-                    
-                    const errorResult = {
-                        status: 'error',
-                        message: 'Network error occurred',
-                        error: error.message
-                    };
-                    
-                    if (onResult) {
-                        onResult(errorResult);
-                    }
-                } finally {
-                    setRunning(false);
-                }
-            };
-
-            return (
-                <div className="bg-gray-50 rounded-lg p-4 card-hover relative overflow-hidden">
-                    {running && (
-                        <div className="absolute top-0 left-0 h-1 bg-blue-500 transition-all duration-300 ease-out"
-                             style={{ width: `${progress}%` }}></div>
-                    )}
-                    
-                    <div className={`text-2xl mb-3 ${
-                        color === 'blue' ? 'text-blue-500' :
-                        color === 'green' ? 'text-green-500' :
-                        color === 'purple' ? 'text-purple-500' :
-                        'text-gray-500'
-                    }`}>
-                        <i className={icon}></i>
-                    </div>
-                    <h3 className="font-semibold text-gray-800 mb-2">{title}</h3>
-                    <p className="text-gray-600 text-sm mb-4">{description}</p>
-                    
-                    {running && (
-                        <div className="mb-2 text-xs text-gray-500">
-                            <div className="flex justify-between items-center">
-                                <span>Progress</span>
-                                <span>{Math.round(progress)}%</span>
+                                </div>
                             </div>
                         </div>
-                    )}
-                    
-                    <button
-                        onClick={runTest}
-                        disabled={running}
-                        className={`w-full ${getButtonClass(color, running)}`}
-                    >
-                        {running ? (
-                            <>
-                                <i className="fas fa-spinner fa-spin mr-2"></i>
-                                Running...
-                            </>
-                        ) : (
-                            <>
-                                <i className="fas fa-play mr-2"></i>
-                                Run Test
-                            </>
-                        )}
-                    </button>
-                </div>
-            );
-        }
+                    ))
+                )}
+            </div>
+        </div>
+    </div>
 
-        // Monitoring Component
-        function Monitoring() {
-            return (
-                <div className="space-y-6">
-                    <div className="bg-white rounded-lg shadow-md p-6">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                            <i className="fas fa-chart-line mr-2 text-green-500"></i>
-                            Monitoring & Observability
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="bg-gray-50 p-4 rounded-lg">
-                                <h3 className="font-semibold mb-2">Grafana Dashboard</h3>
-                                <p className="text-gray-600 text-sm mb-3">Real-time metrics and visualizations</p>
-                                <a 
-                                    href="http://localhost:3000" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className={getButtonClass('orange') + " inline-flex items-center"}
-                                >
-                                    <i className="fas fa-external-link-alt mr-2"></i>
-                                    Open Grafana
-                                </a>
-                            </div>
-                            <div className="bg-gray-50 p-4 rounded-lg">
-                                <h3 className="font-semibold mb-2">Prometheus</h3>
-                                <p className="text-gray-600 text-sm mb-3">Metrics collection and querying</p>
-                                <a 
-                                    href="http://localhost:9090" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className={getButtonClass('red') + " inline-flex items-center"}
-                                >
-                                    <i className="fas fa-external-link-alt mr-2"></i>
-                                    Open Prometheus
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
+    <script>
+        // Simple tab management
+        window.currentTab = 'dashboard';
+        
+        function showTab(tabName) {
+            window.currentTab = tabName;
+            // Redirect to appropriate content
+            console.log('Tab changed to:', tabName);
         }
+        
+        // Simple test runner
+        async function runTest(testType) {
+            try {
+                const response = await fetch('/api/tests/' + testType, { method: 'POST' });
+                const data = await response.json();
+                alert('Test result: ' + data.message);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        // Lab management
+        async function startLab(profile) {
+            try {
+                const response = await fetch('/api/lab/start/' + profile, { method: 'POST' });
+                const data = await response.json();
+                alert('Lab result: ' + data.message);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        async function stopLab() {
+            try {
+                const response = await fetch('/api/lab/stop', { method: 'POST' });
+                const data = await response.json();
+                alert('Lab result: ' + data.message);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+    </script>
 
-        // Render the app
-        ReactDOM.render(<App />, document.getElementById('root'));
+    <!-- Render the React app -->
+    <script>
+        ReactDOM.render(React.createElement(App), document.getElementById('root'));
     </script>
 </body>
 </html>
-    """)
+""")
+
 
 @app.get("/favicon.ico")
 async def favicon():
