@@ -1,0 +1,169 @@
+# CI/CD Docker Compose configuration
+# Optimized for continuous integration environments
+
+version: '3.8'
+
+services:
+  # CI build and test service
+  ci-tests:
+    build:
+      context: .
+      target: ci
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    container_name: semantic-kernel-ci-tests
+    environment:
+      - USE_OLLAMA=true
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL_ID=qwen2.5:latest
+      - AGENT_NAME=CI-Test-Agent
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CI=true
+      - PYTHONPATH=/app
+    volumes:
+      - ./test-reports:/app/test-reports:rw
+      - ./logs:/app/logs:rw
+      - ./htmlcov:/app/htmlcov:rw
+    networks:
+      - semantic-kernel-network
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: |
+      sh -c "
+        echo '🚀 Starting CI Test Pipeline...' &&
+        echo '=== Environment Validation ===' &&
+        make test-validate &&
+        echo '=== Code Quality Checks ===' &&
+        make quality-check &&
+        echo '=== Unit Tests ===' &&
+        pytest tests/unit/ -v --cov=. --cov-report=html:htmlcov/unit --cov-report=xml:coverage-unit.xml --junitxml=test-reports/unit-test-results.xml &&
+        echo '=== Functional Tests ===' &&
+        pytest tests/functional/ -v --cov=. --cov-report=html:htmlcov/functional --cov-report=xml:coverage-functional.xml --junitxml=test-reports/functional-test-results.xml --html=test-reports/functional-test-report.html --self-contained-html &&
+        echo '=== LLM Evaluation Tests ===' &&
+        pytest tests/llm_evaluation/test_agent_responses.py tests/llm_evaluation/test_deepeval_integration.py -v -m 'llm_eval or deepeval' --junitxml=test-reports/llm-eval-results.xml --html=test-reports/llm-eval-report.html --self-contained-html &&
+        echo '=== Conversation Chain Tests ===' &&
+        pytest tests/llm_evaluation/test_conversation_chains.py -v --tb=short -m 'llm_eval and deepeval' --junitxml=test-reports/conversation-chain-results.xml --html=test-reports/conversation-chain-report.html --self-contained-html &&
+        echo '=== Dynamic Conversation Tests ===' &&
+        pytest tests/llm_evaluation/test_dynamic_conversation_chains.py -v --tb=short -m 'llm_eval and deepeval' --junitxml=test-reports/dynamic-conversation-results.xml --html=test-reports/dynamic-conversation-report.html --self-contained-html &&
+        echo '=== Generating Reports ===' &&
+        make export-metrics &&
+        echo '✅ CI Pipeline Complete!'
+      "
+
+  # Parallel unit tests
+  unit-tests-parallel:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-kernel-unit-tests-parallel
+    environment:
+      - USE_OLLAMA=true
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL_ID=test-model
+      - AGENT_NAME=Test-Agent
+      - CI=true
+    volumes:
+      - ./test-reports:/app/test-reports:rw
+      - ./logs:/app/logs:rw
+    networks:
+      - semantic-kernel-network
+    command: ["pytest", "tests/unit/", "-v", "-n", "auto", "--cov=.", "--cov-report=xml:test-reports/coverage-unit-parallel.xml", "--junitxml=test-reports/unit-test-results-parallel.xml"]
+
+  # Parallel functional tests
+  functional-tests-parallel:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-kernel-functional-tests-parallel
+    environment:
+      - USE_OLLAMA=true
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL_ID=qwen2.5:latest
+      - AGENT_NAME=Test-Agent
+      - CI=true
+    volumes:
+      - ./test-reports:/app/test-reports:rw
+      - ./logs:/app/logs:rw
+    networks:
+      - semantic-kernel-network
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: ["pytest", "tests/functional/", "-v", "-n", "auto", "--cov=.", "--cov-report=xml:test-reports/coverage-functional-parallel.xml", "--junitxml=test-reports/functional-test-results-parallel.xml"]
+
+  # Code quality checks service
+  quality-checks:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-kernel-quality-checks-ci
+    environment:
+      - CI=true
+    volumes:
+      - .:/app:ro
+      - ./test-reports:/app/test-reports:rw
+    networks:
+      - semantic-kernel-network
+    command: |
+      sh -c "
+        echo '=== Code Quality Checks ===' &&
+        echo 'Checking code formatting...' &&
+        black --check --diff . &&
+        echo 'Checking import sorting...' &&
+        isort --check-only --diff . &&
+        echo 'Running linting...' &&
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics &&
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics &&
+        echo 'Running type checking...' &&
+        mypy . --ignore-missing-imports --exclude venv --exclude .venv &&
+        echo 'Running security analysis...' &&
+        bandit -r . -f json -o test-reports/bandit-report.json --exclude ./venv,./tests,./.venv &&
+        echo '✅ All quality checks passed!'
+      "
+
+  # Fast Ollama service for CI (minimal models)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: semantic-kernel-ollama-ci
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=2m
+    networks:
+      - semantic-kernel-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    tmpfs:
+      - /tmp
+
+  # CI model setup (optimized for CI)
+  ollama-ci-setup:
+    image: ollama/ollama:latest
+    container_name: semantic-kernel-ollama-ci-setup
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - semantic-kernel-network
+    command: |
+      sh -c "
+        echo 'Setting up models for CI environment...' &&
+        ollama pull qwen2.5:latest &&
+        echo 'CI models ready!'
+      "
+    restart: "no"
+
+networks:
+  semantic-kernel-network:
+    driver: bridge 

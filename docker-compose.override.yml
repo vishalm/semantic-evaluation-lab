@@ -1,0 +1,66 @@
+# Docker Compose override for development environment
+# This file is automatically loaded when running docker-compose commands
+
+version: '3.8'
+
+services:
+  # Override app service for development
+  app:
+    ports:
+      - "5000:5000"
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - .:/app:rw
+      - ./logs:/app/logs:rw
+      - ./test-reports:/app/test-reports:rw
+      - ./htmlcov:/app/htmlcov:rw
+    stdin_open: true
+    tty: true
+
+  # Override Ollama for development with port binding
+  ollama:
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_DEBUG=1
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama-models:/tmp/ollama-models:ro
+
+  # Enable all test services for development
+  unit-tests:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    stdin_open: true
+    tty: true
+
+  functional-tests:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    stdin_open: true
+    tty: true
+
+  llm-eval-tests:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    stdin_open: true
+    tty: true
+
+  conversation-chain-tests:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    stdin_open: true
+    tty: true
+
+  dynamic-conversation-tests:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    stdin_open: true
+    tty: true 

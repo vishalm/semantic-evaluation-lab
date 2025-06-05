@@ -1,0 +1,680 @@
+name: Semantic Evaluation Lab - CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  lint-and-format:
+    name: 🧹 Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy isort bandit
+        pip install -r requirements.txt
+        
+    - name: Check code formatting with Black
+      run: |
+        black --check --diff .
+        
+    - name: Check import sorting with isort
+      run: |
+        isort --check-only --diff .
+        
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+        
+    - name: Type check with mypy
+      run: |
+        mypy . --ignore-missing-imports --exclude venv --exclude .venv
+        
+    - name: Security check with bandit
+      run: |
+        bandit -r . -f json -o bandit-report.json --exclude ./venv,./tests,./.venv || true
+        bandit -r . --exclude ./venv,./tests,./.venv
+
+    - name: Upload security report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-analysis
+        path: bandit-report.json
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-${{ matrix.python-version }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.python-version }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run unit tests
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+      run: |
+        pytest tests/unit/ -v --cov=. --cov-report=xml --cov-report=term-missing --junitxml=unit-test-results.xml
+        
+    - name: Upload unit test coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-unit-${{ matrix.python-version }}
+        
+    - name: Archive unit test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: unit-test-results-${{ matrix.python-version }}
+        path: |
+          unit-test-results.xml
+          coverage.xml
+
+  functional-tests:
+    name: Functional Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Validate test environment
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+      run: |
+        echo "=== TEST ENVIRONMENT VALIDATION ==="
+        python -c "
+        from config import app_config
+        import os
+        print(f'Ollama enabled: {app_config.use_ollama}')
+        print(f'OpenAI API key: {\"✓\" if os.getenv(\"OPENAI_API_KEY\") else \"✗\"}')
+        print(f'Azure API key: {\"✓\" if os.getenv(\"AZURE_OPENAI_API_KEY\") else \"✗\"}')
+        has_service = app_config.use_ollama or bool(os.getenv('OPENAI_API_KEY')) or bool(os.getenv('AZURE_OPENAI_API_KEY'))
+        print(f'Functional tests will: {\"run\" if has_service else \"be skipped (no AI service)\"}')
+        "
+        
+    - name: Run functional tests (with auto-skip)
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+      run: |
+        echo "Running functional tests with automatic skipping for unavailable services..."
+        pytest tests/functional/ -v --cov=. --cov-report=xml --cov-report=term-missing --junitxml=functional-test-results.xml --html=functional-test-report.html --self-contained-html -x
+        
+        # Check if tests were skipped and that's OK
+        SKIP_COUNT=$(grep -o 'skipped' functional-test-results.xml | wc -l || echo "0")
+        echo "Functional tests completed with $SKIP_COUNT skipped tests"
+        
+    - name: Upload functional test coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: functional
+        name: codecov-functional
+        
+    - name: Archive functional test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: functional-test-results
+        path: |
+          functional-test-results.xml
+          functional-test-report.html
+          coverage.xml
+
+  llm-evaluation-tests:
+    name: LLM Evaluation Tests (DeepEval)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Validate DeepEval environment
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "=== DEEPEVAL ENVIRONMENT VALIDATION ==="
+        python -c "
+        import os
+        has_openai = bool(os.getenv('OPENAI_API_KEY'))
+        print(f'OpenAI API key for DeepEval: {\"✓\" if has_openai else \"✗\"}')
+        print(f'DeepEval tests will: {\"run\" if has_openai else \"be skipped (no OPENAI_API_KEY)\"}')
+        "
+        
+    - name: Run LLM Evaluation tests with DeepEval (with auto-skip)
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        # DeepEval requires OpenAI API key for evaluation metrics
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Running LLM evaluation tests with automatic skipping for missing API keys..."
+        pytest tests/llm_evaluation/test_agent_responses.py tests/llm_evaluation/test_deepeval_integration.py -v -m "llm_eval or deepeval" --junitxml=llm-eval-results.xml --html=llm-eval-report.html --self-contained-html -x
+        
+        # Check if tests were skipped and that's OK
+        SKIP_COUNT=$(grep -o 'skipped' llm-eval-results.xml | wc -l || echo "0")
+        echo "LLM evaluation tests completed with $SKIP_COUNT skipped tests"
+        
+    - name: Run DeepEval test command (if available)
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        # Only run DeepEval CLI if API key is available
+        if [ -n "$OPENAI_API_KEY" ]; then
+          echo "Running DeepEval CLI tests..."
+          deepeval test run tests/llm_evaluation/test_agent_responses.py --verbose || echo "DeepEval CLI completed with warnings"
+        else
+          echo "Skipping DeepEval CLI tests - no OPENAI_API_KEY available"
+        fi
+        
+    - name: Archive LLM evaluation results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: llm-evaluation-results
+        path: |
+          llm-eval-results.xml
+          llm-eval-report.html
+
+  conversation-chain-tests:
+    name: Conversation Chain Stability Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create logs and reports directories
+      run: |
+        mkdir -p logs test-reports
+        
+    - name: Validate DeepEval environment for conversation chains
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "=== CONVERSATION CHAIN TEST ENVIRONMENT ==="
+        python -c "
+        import os
+        has_openai = bool(os.getenv('OPENAI_API_KEY'))
+        print(f'OpenAI API key for DeepEval: {\"✓\" if has_openai else \"✗\"}')
+        print(f'Conversation chain tests will: {\"run\" if has_openai else \"be skipped (no OPENAI_API_KEY)\"}')
+        print('Test configuration:')
+        print('  - Technical mathematical conversations')
+        print('  - Chain lengths: 5, 10, 15, 20 turns')
+        print('  - Framework stability evaluation')
+        print('  - Comprehensive logging and metrics')
+        "
+        
+    - name: Run conversation chain tests (5-turn)
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Running 5-turn conversation chain tests..."
+        pytest tests/llm_evaluation/test_conversation_chains.py::TestConversationChainStability::test_conversation_chain_evaluation[5] -v --tb=short --junitxml=chain-5-results.xml || echo "5-turn chain completed with possible skips"
+        
+    - name: Run conversation chain tests (10-turn)
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Running 10-turn conversation chain tests..."
+        pytest tests/llm_evaluation/test_conversation_chains.py::TestConversationChainStability::test_conversation_chain_evaluation[10] -v --tb=short --junitxml=chain-10-results.xml || echo "10-turn chain completed with possible skips"
+        
+    - name: Run conversation chain tests (15-turn)
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Running 15-turn conversation chain tests..."
+        pytest tests/llm_evaluation/test_conversation_chains.py::TestConversationChainStability::test_conversation_chain_evaluation[15] -v --tb=short --junitxml=chain-15-results.xml || echo "15-turn chain completed with possible skips"
+        
+    - name: Run conversation chain tests (20-turn)
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Running 20-turn conversation chain tests..."
+        pytest tests/llm_evaluation/test_conversation_chains.py::TestConversationChainStability::test_conversation_chain_evaluation[20] -v --tb=short --junitxml=chain-20-results.xml || echo "20-turn chain completed with possible skips"
+        
+    - name: Run cross-chain consistency tests
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        AGENT_NAME: Test-Agent
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Running cross-chain consistency analysis..."
+        pytest tests/llm_evaluation/test_conversation_chains.py::TestConversationChainStability::test_cross_chain_consistency -v --tb=short --junitxml=cross-chain-results.xml || echo "Cross-chain analysis completed"
+        
+    - name: Generate comprehensive stability report
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Generating stability reports..."
+        pytest tests/llm_evaluation/test_conversation_chains.py::TestConversationChainReporting::test_generate_evaluation_report -v --junitxml=report-generation-results.xml || echo "Report generation completed"
+        
+    - name: Export Prometheus metrics
+      run: |
+        echo "Exporting Prometheus metrics..."
+        python -c "
+        try:
+            from logging_config import save_metrics_to_file, export_prometheus_metrics
+            save_metrics_to_file('test-reports/prometheus_metrics_ci.txt')
+            print('✅ Prometheus metrics exported successfully')
+        except Exception as e:
+            print(f'⚠️ Metrics export failed: {e}')
+        "
+        
+    - name: Analyze test results
+      run: |
+        echo "=== CONVERSATION CHAIN TEST ANALYSIS ==="
+        
+        # Count total tests run vs skipped
+        TOTAL_TESTS=0
+        SKIPPED_TESTS=0
+        
+        for file in chain-*-results.xml cross-chain-results.xml report-generation-results.xml; do
+          if [ -f "$file" ]; then
+            TESTS=$(grep -o 'tests="[0-9]*"' "$file" | grep -o '[0-9]*' || echo "0")
+            SKIPS=$(grep -o 'skipped="[0-9]*"' "$file" | grep -o '[0-9]*' || echo "0")
+            TOTAL_TESTS=$((TOTAL_TESTS + TESTS))
+            SKIPPED_TESTS=$((SKIPPED_TESTS + SKIPS))
+            echo "File $file: $TESTS tests, $SKIPS skipped"
+          fi
+        done
+        
+        echo "Total conversation chain tests: $TOTAL_TESTS"
+        echo "Total skipped tests: $SKIPPED_TESTS"
+        echo "Execution rate: $(( (TOTAL_TESTS - SKIPPED_TESTS) * 100 / TOTAL_TESTS ))%" 2>/dev/null || echo "Execution rate: N/A"
+        
+        # Check if any metrics files were generated
+        if [ -d "test-reports" ]; then
+          echo "Generated reports:"
+          ls -la test-reports/ || echo "No reports directory"
+        fi
+        
+        if [ -d "logs" ]; then
+          echo "Generated logs:"
+          ls -la logs/ || echo "No logs directory"
+        fi
+        
+    - name: Archive conversation chain results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: conversation-chain-results
+        path: |
+          chain-*-results.xml
+          cross-chain-results.xml
+          report-generation-results.xml
+          test-reports/
+          logs/
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Test configuration loading
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+      run: |
+        python -c "from config import app_config, ollama_config; print(f'✅ Config loaded - Ollama: {app_config.use_ollama}, Host: {ollama_config.host}')"
+        
+    - name: Test script imports
+      run: |
+        python -c "import basic_agent; print('✅ basic_agent imported successfully')"
+        python -c "import basic_agent_ollama; print('✅ basic_agent_ollama imported successfully')"
+        
+    - name: Test DeepEval integration
+      env:
+        USE_OLLAMA: true
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        python -c "from deepeval.test_case import LLMTestCase; from deepeval.metrics import AnswerRelevancyMetric; print('✅ DeepEval imported successfully')"
+        
+    - name: Test environment fixtures
+      run: |
+        python -c "
+        from tests.conftest import validate_test_environment
+        import pytest
+        print('✅ Test environment fixtures loaded successfully')
+        "
+
+  sonarcloud:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, unit-tests, functional-tests, llm-evaluation-tests]
+    if: always() && (needs.lint-and-format.result == 'success' && needs.unit-tests.result == 'success')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run tests with coverage (skip-aware)
+      env:
+        USE_OLLAMA: true
+        OLLAMA_HOST: http://localhost:11434
+        OLLAMA_MODEL_ID: test-model
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        echo "Running all tests for coverage analysis..."
+        pytest --cov=. --cov-report=xml --cov-report=term-missing --junitxml=test-results.xml -x
+        
+    - name: Run security analysis
+      run: |
+        bandit -r . -f json -o bandit-report.json --exclude ./venv,./tests,./.venv || true
+        
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, unit-tests, functional-tests, llm-evaluation-tests, conversation-chain-tests, integration-tests, sonarcloud]
+    if: always()
+    
+    steps:
+    - name: Check job results
+      run: |
+        echo "=== QUALITY GATE RESULTS ==="
+        echo "Lint and Format: ${{ needs.lint-and-format.result }}"
+        echo "Unit Tests: ${{ needs.unit-tests.result }}"
+        echo "Functional Tests: ${{ needs.functional-tests.result }}"
+        echo "LLM Evaluation Tests: ${{ needs.llm-evaluation-tests.result }}"
+        echo "Conversation Chain Tests: ${{ needs.conversation-chain-tests.result }}"
+        echo "Integration Tests: ${{ needs.integration-tests.result }}"
+        echo "SonarCloud: ${{ needs.sonarcloud.result }}"
+        
+    - name: Quality Gate Check (Flexible for Test Skipping)
+      run: |
+        # Critical checks (must pass)
+        if [[ "${{ needs.lint-and-format.result }}" != "success" ]]; then
+          echo "❌ Lint and format checks failed"
+          exit 1
+        fi
+        if [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
+          echo "❌ Unit tests failed"
+          exit 1
+        fi
+        if [[ "${{ needs.integration-tests.result }}" != "success" ]]; then
+          echo "❌ Integration tests failed"
+          exit 1
+        fi
+        
+        # Flexible checks (can skip due to missing services)
+        echo "=== FLEXIBLE TEST RESULTS ==="
+        
+        if [[ "${{ needs.functional-tests.result }}" == "success" ]]; then
+          echo "✅ Functional tests passed"
+        elif [[ "${{ needs.functional-tests.result }}" == "skipped" ]]; then
+          echo "⚠️ Functional tests skipped (no AI service configured)"
+        else
+          echo "❌ Functional tests failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.llm-evaluation-tests.result }}" == "success" ]]; then
+          echo "✅ LLM evaluation tests passed"
+        elif [[ "${{ needs.llm-evaluation-tests.result }}" == "skipped" ]]; then
+          echo "⚠️ LLM evaluation tests skipped (no OPENAI_API_KEY)"
+        else
+          echo "❌ LLM evaluation tests failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.conversation-chain-tests.result }}" == "success" ]]; then
+          echo "✅ Conversation chain tests passed"
+        elif [[ "${{ needs.conversation-chain-tests.result }}" == "skipped" ]]; then
+          echo "⚠️ Conversation chain tests skipped (no OPENAI_API_KEY)"
+        else
+          echo "⚠️ Conversation chain tests failed (non-critical for DeepEval stability testing)"
+          echo "This indicates potential framework instability but won't fail the build"
+        fi
+        
+        echo "✅ Quality gate passed - all critical tests succeeded, optional tests handled appropriately"
+
+  test-reports-archive:
+    name: Archive All Test Reports
+    runs-on: ubuntu-latest
+    needs: [unit-tests, functional-tests, llm-evaluation-tests, conversation-chain-tests]
+    if: always()
+    
+    steps:
+    - name: Download all test artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: test-reports
+        
+    - name: Create comprehensive test report
+      run: |
+        cd test-reports
+        echo "# Test Results Summary" > test-summary.md
+        echo "Generated on: $(date)" >> test-summary.md
+        echo "Commit: ${{ github.sha }}" >> test-summary.md
+        echo "" >> test-summary.md
+        echo "## Test Categories:" >> test-summary.md
+        echo "- **Unit Tests**: Always run (core functionality)" >> test-summary.md
+        echo "- **Functional Tests**: Run when AI services available" >> test-summary.md  
+        echo "- **LLM Evaluation**: Run when OPENAI_API_KEY available" >> test-summary.md
+        echo "" >> test-summary.md
+        echo "## Available Reports:" >> test-summary.md
+        find . -name "*.xml" -o -name "*.html" | sort >> test-summary.md
+        echo "" >> test-summary.md
+        echo "## Test Skipping Behavior" >> test-summary.md
+        echo "Tests are automatically skipped when required services are unavailable." >> test-summary.md
+        echo "This is expected behavior and does not indicate failure." >> test-summary.md
+        
+    - name: Archive comprehensive test reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: comprehensive-test-reports
+        path: test-reports/
+        retention-days: 30
+
+  build-and-package:
+    name: Build and Package
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build wheel
+        
+    - name: Create package
+      run: |
+        # Create a simple package structure for demonstration
+        echo "Semantic Kernel Demo with DeepEval Integration" > package-info.txt
+        echo "Version: $(date +%Y.%m.%d-%H%M%S)" >> package-info.txt
+        echo "Features:" >> package-info.txt
+        echo "- ✅ Semantic Kernel Integration" >> package-info.txt
+        echo "- ✅ DeepEval LLM Evaluation" >> package-info.txt
+        echo "- ✅ Automatic Test Skipping" >> package-info.txt
+        echo "- ✅ CI/CD Pipeline" >> package-info.txt
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: |
+          package-info.txt
+          *.py
+          requirements.txt
+          README.md
+          TESTING.md 

@@ -1,0 +1,989 @@
+version: '3.8'
+
+# Environment Variables for Semantic Evaluation Lab
+# These variables control automated behavior, testing, monitoring, and system configuration
+x-common-variables: &common-variables
+  # === Core AI Configuration ===
+  USE_OLLAMA: ${USE_OLLAMA:-true}
+  OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+  OLLAMA_MODEL_ID: ${OLLAMA_MODEL_ID:-qwen2.5:latest}
+  AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+  AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+  AZURE_OPENAI_DEPLOYMENT_NAME: ${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-35-turbo}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  
+  # === Lab Environment Configuration ===
+  LAB_ENVIRONMENT: ${LAB_ENVIRONMENT:-development}
+  LAB_NAME: ${LAB_NAME:-Semantic-Evaluation-Lab}
+  LAB_VERSION: ${LAB_VERSION:-1.0.0}
+  LAB_ADMIN_EMAIL: ${LAB_ADMIN_EMAIL:-admin@lab.local}
+  ENABLE_DEBUG_MODE: ${ENABLE_DEBUG_MODE:-true}
+  
+  # === Auto-Trigger Configuration ===
+  AUTO_RUN_TESTS: ${AUTO_RUN_TESTS:-false}
+  AUTO_RUN_UNIT_TESTS: ${AUTO_RUN_UNIT_TESTS:-true}
+  AUTO_RUN_FUNCTIONAL_TESTS: ${AUTO_RUN_FUNCTIONAL_TESTS:-false}
+  AUTO_RUN_LLM_EVAL_TESTS: ${AUTO_RUN_LLM_EVAL_TESTS:-false}
+  AUTO_RUN_CONVERSATION_TESTS: ${AUTO_RUN_CONVERSATION_TESTS:-false}
+  AUTO_RUN_LOAD_TESTS: ${AUTO_RUN_LOAD_TESTS:-false}
+  AUTO_SETUP_MODELS: ${AUTO_SETUP_MODELS:-true}
+  AUTO_GENERATE_REPORTS: ${AUTO_GENERATE_REPORTS:-true}
+  
+  # === Test Configuration ===
+  TEST_TIMEOUT_SECONDS: ${TEST_TIMEOUT_SECONDS:-1800}
+  TEST_RETRY_COUNT: ${TEST_RETRY_COUNT:-3}
+  TEST_PARALLEL_WORKERS: ${TEST_PARALLEL_WORKERS:-2}
+  CONVERSATION_CHAIN_LENGTHS: ${CONVERSATION_CHAIN_LENGTHS:-5,10,15}
+  ENABLE_CONVERSATION_STABILITY_TESTS: ${ENABLE_CONVERSATION_STABILITY_TESTS:-true}
+  ENABLE_DYNAMIC_CONVERSATION_TESTS: ${ENABLE_DYNAMIC_CONVERSATION_TESTS:-true}
+  
+  # === Load Testing Configuration ===
+  LOCUST_USERS: ${LOCUST_USERS:-1}
+  LOCUST_SPAWN_RATE: ${LOCUST_SPAWN_RATE:-1}
+  LOCUST_RUN_TIME: ${LOCUST_RUN_TIME:-300s}
+  LOAD_TEST_TARGET_HOST: ${LOAD_TEST_TARGET_HOST:-http://metrics-exporter:8000}
+  ENABLE_LOAD_TEST_AUTO_SCALING: ${ENABLE_LOAD_TEST_AUTO_SCALING:-false}
+  LOAD_TEST_QUALITY_THRESHOLD: ${LOAD_TEST_QUALITY_THRESHOLD:-0.7}
+  
+  # === Monitoring & Observability ===
+  ENABLE_MONITORING: ${ENABLE_MONITORING:-true}
+  PROMETHEUS_RETENTION_TIME: ${PROMETHEUS_RETENTION_TIME:-7d}
+  PROMETHEUS_RETENTION_SIZE: ${PROMETHEUS_RETENTION_SIZE:-1GB}
+  GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+  ENABLE_ALERTING: ${ENABLE_ALERTING:-true}
+  METRICS_COLLECTION_INTERVAL: ${METRICS_COLLECTION_INTERVAL:-15s}
+  ENABLE_OLLAMA_METRICS: ${ENABLE_OLLAMA_METRICS:-true}
+  
+  # === DeepEval Configuration ===
+  DEEPEVAL_MODEL_ID: ${DEEPEVAL_MODEL_ID:-gpt-4}
+  DEEPEVAL_CACHE_FOLDER: ${DEEPEVAL_CACHE_FOLDER:-.deepeval_cache}
+  DEEPEVAL_VERBOSE: ${DEEPEVAL_VERBOSE:-true}
+  DEEPEVAL_CONFIDENCE_AI_TOKEN: ${DEEPEVAL_CONFIDENCE_AI_TOKEN:-}
+  ANSWER_RELEVANCY_THRESHOLD: ${ANSWER_RELEVANCY_THRESHOLD:-0.7}
+  FAITHFULNESS_THRESHOLD: ${FAITHFULNESS_THRESHOLD:-0.7}
+  RESPONSE_QUALITY_THRESHOLD: ${RESPONSE_QUALITY_THRESHOLD:-0.75}
+  
+  # === Logging Configuration ===
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  ENABLE_STRUCTURED_LOGGING: ${ENABLE_STRUCTURED_LOGGING:-true}
+  ENABLE_JSON_LOGGING: ${ENABLE_JSON_LOGGING:-true}
+  LOG_AGGREGATION_ENABLED: ${LOG_AGGREGATION_ENABLED:-true}
+  LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}
+  
+  # === Notification Configuration ===
+  ENABLE_NOTIFICATIONS: ${ENABLE_NOTIFICATIONS:-false}
+  SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+  DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+  EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+  EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+  EMAIL_USERNAME: ${EMAIL_USERNAME:-}
+  EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+  
+  # === CI/CD Integration ===
+  CI_MODE: ${CI_MODE:-false}
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+  ENABLE_SONAR_INTEGRATION: ${ENABLE_SONAR_INTEGRATION:-false}
+  SONAR_TOKEN: ${SONAR_TOKEN:-}
+  BUILD_NUMBER: ${BUILD_NUMBER:-local}
+  GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+  
+  # === Performance Tuning ===
+  MAX_MEMORY_USAGE: ${MAX_MEMORY_USAGE:-1G}
+  MAX_CPU_CORES: ${MAX_CPU_CORES:-2}
+  ENABLE_PERFORMANCE_PROFILING: ${ENABLE_PERFORMANCE_PROFILING:-false}
+  ENABLE_MEMORY_MONITORING: ${ENABLE_MEMORY_MONITORING:-true}
+  CONTAINER_TIMEZONE: ${CONTAINER_TIMEZONE:-UTC}
+
+x-test-variables: &test-variables
+  <<: *common-variables
+  PYTHONPATH: /app
+  PYTEST_CURRENT_TEST: ""
+  COVERAGE_PROCESS_START: .coveragerc
+
+x-monitoring-variables: &monitoring-variables
+  <<: *common-variables
+  PROMETHEUS_PORT: ${PROMETHEUS_PORT:-8000}
+  GRAFANA_PORT: ${GRAFANA_PORT:-3000}
+  NODE_EXPORTER_PORT: ${NODE_EXPORTER_PORT:-9100}
+
+services:
+  # Lab Initialization Service (NEW!)
+  lab-init:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-init
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *common-variables
+    command: |
+      sh -c "
+        echo '🧪 Initializing Semantic Evaluation Lab...' &&
+        echo 'Lab Name: ${LAB_NAME}' &&
+        echo 'Environment: ${LAB_ENVIRONMENT}' &&
+        echo 'Version: ${LAB_VERSION}' &&
+        echo 'Admin Email: ${LAB_ADMIN_EMAIL}' &&
+        mkdir -p logs test-reports htmlcov .deepeval_cache &&
+        
+        if [ '${AUTO_SETUP_MODELS}' = 'true' ]; then
+          echo '🤖 Auto-setup enabled: Will setup Ollama models' &&
+          echo 'Waiting for Ollama service...' &&
+          timeout 300 sh -c 'while ! curl -f ${OLLAMA_HOST}/api/tags; do sleep 5; done' &&
+          echo '✅ Ollama service ready'
+        fi &&
+        
+        if [ '${AUTO_RUN_TESTS}' = 'true' ]; then
+          echo '🧪 Auto-test enabled: Will trigger test suites' &&
+          if [ '${AUTO_RUN_UNIT_TESTS}' = 'true' ]; then
+            echo '📝 Unit tests will be triggered'
+          fi &&
+          if [ '${AUTO_RUN_FUNCTIONAL_TESTS}' = 'true' ]; then
+            echo '⚙️ Functional tests will be triggered'
+          fi &&
+          if [ '${AUTO_RUN_LLM_EVAL_TESTS}' = 'true' ] && [ -n '${OPENAI_API_KEY}' ]; then
+            echo '🔬 LLM evaluation tests will be triggered'
+          fi
+        fi &&
+        
+        if [ '${ENABLE_MONITORING}' = 'true' ]; then
+          echo '📊 Monitoring enabled: Prometheus & Grafana will be configured'
+        fi &&
+        
+        if [ '${ENABLE_NOTIFICATIONS}' = 'true' ]; then
+          echo '🔔 Notifications enabled'
+        fi &&
+        
+        echo '✅ Lab initialization completed!'
+      "
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - dev
+      - all
+      - lab-init
+    restart: "no"
+
+  # Main application service
+  app:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-app
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *common-variables
+      AGENT_NAME: ${AGENT_NAME:-SEL-Assistant}
+      AGENT_INSTRUCTIONS: ${AGENT_INSTRUCTIONS:-You are a helpful assistant in the Semantic Evaluation Lab.}
+    depends_on:
+      - lab-init
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - app
+      - dev
+      - all
+    restart: unless-stopped
+
+  # Auto-Test Orchestrator Service (NEW!)
+  auto-test-orchestrator:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-auto-tests
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: Auto-Test-Agent
+    command: |
+      sh -c "
+        echo '🤖 Auto-Test Orchestrator Starting...' &&
+        
+        if [ '${AUTO_RUN_TESTS}' != 'true' ]; then
+          echo 'Auto-tests disabled. Exiting gracefully.' &&
+          exit 0
+        fi &&
+        
+        echo 'Waiting for dependencies...' &&
+        sleep 10 &&
+        
+        # Run Unit Tests
+        if [ '${AUTO_RUN_UNIT_TESTS}' = 'true' ]; then
+          echo '🧪 Running Unit Tests...' &&
+          pytest tests/unit/ -v --cov=. --cov-report=html:htmlcov/auto-unit --cov-report=xml:coverage-auto-unit.xml --junitxml=test-reports/auto-unit-test-results.xml || echo 'Unit tests completed with issues'
+        fi &&
+        
+        # Run Functional Tests
+        if [ '${AUTO_RUN_FUNCTIONAL_TESTS}' = 'true' ]; then
+          echo '⚙️ Running Functional Tests...' &&
+          pytest tests/functional/ -v --junitxml=test-reports/auto-functional-test-results.xml --html=test-reports/auto-functional-test-report.html --self-contained-html || echo 'Functional tests completed with issues'
+        fi &&
+        
+        # Run LLM Evaluation Tests (if API key available)
+        if [ '${AUTO_RUN_LLM_EVAL_TESTS}' = 'true' ] && [ -n '${OPENAI_API_KEY}' ]; then
+          echo '🔬 Running LLM Evaluation Tests...' &&
+          pytest tests/llm_evaluation/test_agent_responses.py tests/llm_evaluation/test_deepeval_integration.py -v -m 'llm_eval or deepeval' --junitxml=test-reports/auto-llm-eval-results.xml --html=test-reports/auto-llm-eval-report.html --self-contained-html || echo 'LLM evaluation tests completed with issues'
+        fi &&
+        
+        # Run Conversation Chain Tests
+        if [ '${AUTO_RUN_CONVERSATION_TESTS}' = 'true' ] && [ -n '${OPENAI_API_KEY}' ] && [ '${ENABLE_CONVERSATION_STABILITY_TESTS}' = 'true' ]; then
+          echo '🗣️ Running Conversation Chain Tests...' &&
+          for length in \$(echo '${CONVERSATION_CHAIN_LENGTHS}' | tr ',' ' '); do
+            echo \"Testing \$length-turn conversations...\" &&
+            pytest tests/llm_evaluation/test_conversation_chains.py::TestConversationChainStability::test_conversation_chain_evaluation[\$length] -v --junitxml=test-reports/auto-conversation-\$length-results.xml || echo \"Conversation \$length-turn test completed\"
+          done
+        fi &&
+        
+        # Generate Reports
+        if [ '${AUTO_GENERATE_REPORTS}' = 'true' ]; then
+          echo '📊 Generating Comprehensive Reports...' &&
+          python -c \"
+          import os, json, glob
+          from datetime import datetime
+          
+          # Collect all test results
+          report_files = glob.glob('test-reports/auto-*-results.xml')
+          
+          summary = {
+              'lab_name': '${LAB_NAME}',
+              'environment': '${LAB_ENVIRONMENT}',
+              'timestamp': datetime.now().isoformat(),
+              'total_test_files': len(report_files),
+              'test_files': report_files,
+              'configuration': {
+                  'auto_unit_tests': '${AUTO_RUN_UNIT_TESTS}' == 'true',
+                  'auto_functional_tests': '${AUTO_RUN_FUNCTIONAL_TESTS}' == 'true',
+                  'auto_llm_eval_tests': '${AUTO_RUN_LLM_EVAL_TESTS}' == 'true',
+                  'auto_conversation_tests': '${AUTO_RUN_CONVERSATION_TESTS}' == 'true',
+                  'openai_api_available': bool('${OPENAI_API_KEY}'),
+                  'conversation_chain_lengths': '${CONVERSATION_CHAIN_LENGTHS}'.split(',')
+              }
+          }
+          
+          with open('test-reports/auto-test-summary.json', 'w') as f:
+              json.dump(summary, f, indent=2)
+          
+          print('✅ Auto-test summary saved to test-reports/auto-test-summary.json')
+          \" || echo 'Report generation completed with warnings'
+        fi &&
+        
+        echo '✅ Auto-Test Orchestration Completed!'
+      "
+    depends_on:
+      - lab-init
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - auto-tests
+      - dev
+      - all
+    restart: "no"
+
+  # Production-ready application
+  app-prod:
+    build:
+      context: .
+      target: production
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-app-prod
+    volumes:
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *common-variables
+      LAB_ENVIRONMENT: production
+      ENABLE_DEBUG_MODE: false
+      LOG_LEVEL: WARNING
+      AGENT_NAME: ${AGENT_NAME:-SEL-Production-Assistant}
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - prod
+    restart: unless-stopped
+
+  # Unit tests service
+  unit-tests:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-unit-tests
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: Unit-Test-Agent
+    command: ["pytest", "tests/unit/", "-v", "--cov=.", "--cov-report=html:htmlcov/unit", "--cov-report=xml:coverage-unit.xml", "--junitxml=test-reports/unit-test-results.xml", "--maxfail=${TEST_RETRY_COUNT}", "--tb=short"]
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - test
+      - unit
+      - all
+
+  # Functional tests service
+  functional-tests:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-functional-tests
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: Functional-Test-Agent
+    command: ["pytest", "tests/functional/", "-v", "--cov=.", "--cov-report=html:htmlcov/functional", "--cov-report=xml:coverage-functional.xml", "--junitxml=test-reports/functional-test-results.xml", "--html=test-reports/functional-test-report.html", "--self-contained-html", "--maxfail=${TEST_RETRY_COUNT}"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - test
+      - functional
+      - all
+
+  # LLM Evaluation tests service
+  llm-eval-tests:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-llm-eval-tests
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: LLM-Eval-Test-Agent
+    command: ["pytest", "tests/llm_evaluation/test_agent_responses.py", "tests/llm_evaluation/test_deepeval_integration.py", "-v", "-m", "llm_eval or deepeval", "--junitxml=test-reports/llm-eval-results.xml", "--html=test-reports/llm-eval-report.html", "--self-contained-html", "--maxfail=${TEST_RETRY_COUNT}"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - test
+      - llm-eval
+      - all
+
+  # Conversation Chain tests service  
+  conversation-chain-tests:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-conversation-tests
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: Conversation-Test-Agent
+    command: ["pytest", "tests/llm_evaluation/test_conversation_chains.py", "-v", "--tb=short", "-m", "llm_eval and deepeval", "--junitxml=test-reports/conversation-chain-results.xml", "--html=test-reports/conversation-chain-report.html", "--self-contained-html", "--maxfail=${TEST_RETRY_COUNT}"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - test
+      - conversation
+      - all
+
+  # Dynamic Conversation tests service
+  dynamic-conversation-tests:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-dynamic-conversation-tests
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: Dynamic-Conversation-Test-Agent
+    command: ["pytest", "tests/llm_evaluation/test_dynamic_conversation_chains.py", "-v", "--tb=short", "-m", "llm_eval and deepeval", "--junitxml=test-reports/dynamic-conversation-results.xml", "--html=test-reports/dynamic-conversation-report.html", "--self-contained-html", "--maxfail=${TEST_RETRY_COUNT}"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - test
+      - dynamic
+      - all
+
+  # Comprehensive test suite
+  all-tests:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-all-tests
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: All-Tests-Agent
+    command: ["pytest", "-v", "--cov=.", "--cov-report=html:htmlcov/all", "--cov-report=xml:coverage-all.xml", "--junitxml=test-reports/all-test-results.xml", "--html=test-reports/all-test-report.html", "--self-contained-html", "--maxfail=${TEST_RETRY_COUNT}", "-n", "${TEST_PARALLEL_WORKERS}"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - test-all
+
+  # Code quality checks service
+  quality-checks:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-kernel-quality-checks
+    volumes:
+      - .:/app
+      - ./test-reports:/app/test-reports
+    command: |
+      sh -c "
+        echo '=== Running Code Quality Checks ===' &&
+        echo 'Checking code formatting...' &&
+        black --check --diff . &&
+        echo 'Checking import sorting...' &&
+        isort --check-only --diff . &&
+        echo 'Running linting...' &&
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics &&
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics &&
+        echo 'Running type checking...' &&
+        mypy . --ignore-missing-imports --exclude venv --exclude .venv &&
+        echo 'Running security analysis...' &&
+        bandit -r . -f json -o test-reports/bandit-report.json --exclude ./venv,./tests,./.venv &&
+        echo '✅ All quality checks passed!'
+      "
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - quality
+      - ci
+
+  # CI service for continuous integration
+  ci:
+    build:
+      context: .
+      target: ci
+      dockerfile: Dockerfile
+    container_name: semantic-kernel-ci
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      - USE_OLLAMA=true
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL_ID=qwen2.5:latest
+      - AGENT_NAME=CI-Test-Agent
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: ["make", "ci-test"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - ci
+
+  # Ollama local LLM service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: semantic-evaluation-lab-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      <<: *common-variables
+      OLLAMA_DEBUG: ${ENABLE_DEBUG_MODE:-true}
+      OLLAMA_MODELS: ${OLLAMA_MODELS:-qwen2.5:latest,llama2:latest}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+    command: |
+      sh -c "
+        echo '🚀 Starting Ollama LLM Service...' &&
+        ollama serve &
+        
+        if [ '${AUTO_SETUP_MODELS}' = 'true' ]; then
+          echo 'Waiting for Ollama to be ready...' &&
+          sleep 10 &&
+          
+          # Pull default model
+          echo '📥 Pulling default model: ${OLLAMA_MODEL_ID}' &&
+          ollama pull ${OLLAMA_MODEL_ID} || echo 'Default model pull completed' &&
+          
+          # Pull additional models if specified
+          for model in \$(echo '${OLLAMA_MODELS}' | tr ',' ' '); do
+            if [ \"\$model\" != '${OLLAMA_MODEL_ID}' ]; then
+              echo \"📥 Pulling additional model: \$model\" &&
+              ollama pull \$model || echo \"Model \$model pull completed\"
+            fi
+          done &&
+          
+          echo '✅ Model setup completed!'
+        fi &&
+        
+        # Keep the service running
+        wait
+      "
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - ollama
+      - dev
+      - all
+      - monitoring
+      - load-test
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${MAX_MEMORY_USAGE:-1G}
+          cpus: '${MAX_CPU_CORES:-2}'
+
+  # Ollama model setup service
+  ollama-setup:
+    image: ollama/ollama:latest
+    container_name: semantic-kernel-ollama-setup
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    command: |
+      sh -c "
+        echo 'Waiting for Ollama service to be ready...' &&
+        while ! curl -f http://ollama:11434/api/tags > /dev/null 2>&1; do
+          echo 'Waiting for Ollama...'
+          sleep 5
+        done &&
+        echo 'Ollama is ready! Pulling models...' &&
+        ollama pull qwen2.5:latest &&
+        echo 'Models pulled successfully!'
+      "
+    profiles:
+      - setup
+      - all
+    restart: "no"
+
+  # Jupyter notebook service for development
+  jupyter:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: semantic-kernel-jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      - USE_OLLAMA=true
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL_ID=qwen2.5:latest
+      - AGENT_NAME=Jupyter-Assistant
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=''", "--NotebookApp.password=''"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - jupyter
+      - dev
+
+  # Web UI Service (NEW!)
+  web-ui:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-web-ui
+    ports:
+      - "5000:5000"  # Web UI port
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+      - /var/run/docker.sock:/var/run/docker.sock  # For Docker management
+    environment:
+      <<: *common-variables
+      SERVICE_NAME: web-ui
+      DOCKER_HOST: unix:///var/run/docker.sock
+    command: ["python", "web_ui.py"]
+    depends_on:
+      - lab-init
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - web-ui
+      - dev
+      - all
+    restart: unless-stopped
+
+  # Metrics exporter service
+  metrics-exporter:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-metrics-exporter
+    ports:
+      - "${PROMETHEUS_PORT:-8000}:8000"
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    environment:
+      <<: *monitoring-variables
+      SERVICE_NAME: metrics-exporter
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_metrics
+    command: ["python", "prometheus_exporter.py"]
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - metrics
+      - monitoring
+      - dev
+      - all
+      - load-test
+    restart: unless-stopped
+
+  # Prometheus monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: semantic-evaluation-lab-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    environment:
+      <<: *monitoring-variables
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-7d}'
+      - '--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-1GB}'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - monitoring
+      - dev
+      - all
+    restart: unless-stopped
+
+  # Grafana dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: semantic-evaluation-lab-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      <<: *monitoring-variables
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-clock-panel
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/definitions/semantic-kernel-overview.json
+      GF_FEATURE_TOGGLES_ENABLE: ${ENABLE_ALERTING:-true}
+    depends_on:
+      - prometheus
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - monitoring
+      - dev
+      - all
+    restart: unless-stopped
+
+  # Node Exporter for system metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: semantic-evaluation-lab-node-exporter
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    environment:
+      <<: *monitoring-variables
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - monitoring
+      - dev
+      - all
+    restart: unless-stopped
+
+  # Locust load testing service with DeepEval integration
+  locust:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-locust
+    ports:
+      - "8089:8089"  # Locust web UI
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: LoadTest-Agent
+    working_dir: /app
+    command: |
+      sh -c "
+        echo '🔥 Starting Locust Load Testing with DeepEval Integration...' &&
+        echo 'Configuration:' &&
+        echo '  Target Host: ${LOAD_TEST_TARGET_HOST}' &&
+        echo '  Quality Threshold: ${LOAD_TEST_QUALITY_THRESHOLD}' &&
+        echo '  Auto-scaling: ${ENABLE_LOAD_TEST_AUTO_SCALING}' &&
+        echo '' &&
+        
+        if [ '${AUTO_RUN_LOAD_TESTS}' = 'true' ]; then
+          echo '🚀 Auto-triggering load tests...' &&
+          locust -f tests/load_testing/locustfile.py \\
+            --host ${LOAD_TEST_TARGET_HOST} \\
+            --headless \\
+            --users ${LOCUST_USERS} \\
+            --spawn-rate ${LOCUST_SPAWN_RATE} \\
+            --run-time ${LOCUST_RUN_TIME} \\
+            --html test-reports/auto-locust-report.html \\
+            --csv test-reports/auto-locust-stats &&
+          echo '✅ Auto load test completed!'
+        else
+          echo '🌐 Starting Locust Web UI...' &&
+          locust -f tests/load_testing/locustfile.py \\
+            --host ${LOAD_TEST_TARGET_HOST} \\
+            --web-host 0.0.0.0 \\
+            --web-port 8089
+        fi
+      "
+    depends_on:
+      - ollama
+      - metrics-exporter
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - load-test
+      - monitoring
+      - all
+    restart: "no"
+
+  # Locust headless (non-interactive) load testing
+  locust-headless:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-locust-headless
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: LoadTest-Agent
+    working_dir: /app
+    command: |
+      sh -c "
+        echo '🔥 Starting Headless Locust Load Test...' &&
+        echo 'Configuration:' &&
+        echo '  Users: ${LOCUST_USERS}' &&
+        echo '  Spawn Rate: ${LOCUST_SPAWN_RATE}/sec' &&
+        echo '  Run Time: ${LOCUST_RUN_TIME}' &&
+        echo '  Target: ${LOAD_TEST_TARGET_HOST}' &&
+        echo '  Quality Threshold: ${LOAD_TEST_QUALITY_THRESHOLD}' &&
+        echo '' &&
+        locust -f tests/load_testing/locustfile.py \\
+          --host ${LOAD_TEST_TARGET_HOST} \\
+          --headless \\
+          --users ${LOCUST_USERS} \\
+          --spawn-rate ${LOCUST_SPAWN_RATE} \\
+          --run-time ${LOCUST_RUN_TIME} \\
+          --html test-reports/locust_report.html \\
+          --csv test-reports/locust_stats &&
+        echo '✅ Load test completed! Reports saved to test-reports/'
+      "
+    depends_on:
+      - ollama
+      - metrics-exporter
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - load-test-headless
+    restart: "no"
+
+  # Load test with different user patterns
+  locust-conversation-focused:
+    build:
+      context: .
+      target: test
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-locust-conversation
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./test-reports:/app/test-reports
+    environment:
+      <<: *test-variables
+      AGENT_NAME: ConversationLoadTest-Agent
+    working_dir: /app
+    command: |
+      sh -c "
+        echo '🗣️ Starting Conversation-Focused Load Test...' &&
+        echo 'Target: ${LOAD_TEST_TARGET_HOST}' &&
+        echo 'Quality Threshold: ${LOAD_TEST_QUALITY_THRESHOLD}' &&
+        echo '' &&
+        locust -f tests/load_testing/locustfile.py \\
+          --host ${LOAD_TEST_TARGET_HOST} \\
+          --headless \\
+          --users 2 \\
+          --spawn-rate 0.5 \\
+          --run-time 600s \\
+          --html test-reports/locust_conversation_report.html \\
+          --csv test-reports/locust_conversation_stats
+      "
+    depends_on:
+      - ollama
+      - metrics-exporter
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - load-test-conversation
+    restart: "no"
+
+  # Health Check Service (NEW!)
+  health-monitor:
+    build:
+      context: .
+      target: development
+      dockerfile: Dockerfile
+    container_name: semantic-evaluation-lab-health-monitor
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    environment:
+      <<: *monitoring-variables
+      SERVICE_NAME: health-monitor
+    command: |
+      sh -c "
+        echo '🏥 Starting Health Monitor...' &&
+        
+        while true; do
+          echo '=== Health Check Report - $(date) ===' &&
+          
+          # Check Ollama service
+          if curl -f ${OLLAMA_HOST}/api/tags >/dev/null 2>&1; then
+            echo '✅ Ollama: Healthy'
+          else
+            echo '❌ Ollama: Unhealthy'
+          fi &&
+          
+          # Check Prometheus
+          if [ '${ENABLE_MONITORING}' = 'true' ]; then
+            if curl -f http://prometheus:9090/-/healthy >/dev/null 2>&1; then
+              echo '✅ Prometheus: Healthy'
+            else
+              echo '❌ Prometheus: Unhealthy'
+            fi
+          fi &&
+          
+          # Check Grafana
+          if [ '${ENABLE_MONITORING}' = 'true' ]; then
+            if curl -f http://grafana:${GRAFANA_PORT}/api/health >/dev/null 2>&1; then
+              echo '✅ Grafana: Healthy'
+            else
+              echo '❌ Grafana: Unhealthy'
+            fi
+          fi &&
+          
+          # Check metrics exporter
+          if curl -f http://metrics-exporter:${PROMETHEUS_PORT}/metrics >/dev/null 2>&1; then
+            echo '✅ Metrics Exporter: Healthy'
+          else
+            echo '❌ Metrics Exporter: Unhealthy'
+          fi &&
+          
+          echo '=== End Health Report ===' &&
+          echo '' &&
+          
+          # Sleep based on collection interval
+          sleep ${METRICS_COLLECTION_INTERVAL:-15s}
+        done
+      "
+    depends_on:
+      - ollama
+    networks:
+      - semantic-kernel-network
+    profiles:
+      - health-monitor
+      - monitoring
+      - dev
+      - all
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  semantic-kernel-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

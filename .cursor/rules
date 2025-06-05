@@ -1,0 +1,112 @@
+# Semantic Kernel Learning Project - Cursor Rules
+
+## 🎯 Project Overview
+This project demonstrates AI agent implementations using Microsoft's Semantic Kernel framework with support for both Azure OpenAI and local Ollama models.
+
+## 📋 Coding Standards
+
+### Python Style Guidelines
+- Follow PEP 8 for Python code style
+- Use type hints for all function parameters and return types
+- Maximum line length: 88 characters (Black formatter standard)
+- Use docstrings for all classes and functions
+- Prefer f-strings for string formatting
+- Use async/await for all AI operations
+
+### File Organization
+- Keep configuration logic in `config.py`
+- Environment variables should be documented in `env.example`
+- All AI service interactions should be async
+- Use descriptive variable names and avoid abbreviations
+
+### Error Handling
+- Always validate environment variables before use
+- Provide helpful error messages with solutions
+- Use try/catch blocks for AI service calls
+- Include fallback options when possible
+
+### Dependencies
+- Only add dependencies that are actually needed
+- Update `requirements.txt` when adding new packages
+- Prefer semantic-kernel built-in connectors
+- Document any optional dependencies
+
+## 🔒 Constraints
+
+### Security
+- NEVER commit API keys or sensitive data
+- Always use environment variables for credentials
+- Validate all user inputs
+- Don't log sensitive information
+
+### Configuration
+- All hardcoded values should be moved to configuration
+- Support both Ollama and Azure OpenAI seamlessly
+- Provide sensible defaults for optional settings
+- Configuration should be self-documenting
+
+### Code Quality
+- No unused imports or variables
+- All functions should have a single responsibility
+- Use meaningful commit messages
+- Write code that is self-explanatory
+
+## 🎨 Patterns to Follow
+
+### Async Operations
+```python
+async def main():
+    result = await service.call()
+    return result
+```
+
+### Configuration Usage
+```python
+from config import app_config, azure_config, ollama_config
+
+if app_config.use_ollama:
+    service = create_ollama_service()
+else:
+    service = create_azure_service()
+```
+
+### Error Messages
+```python
+if not validate_config():
+    print("❌ Configuration error")
+    print("💡 Helpful solution")
+    return
+```
+
+## 🚫 Anti-Patterns to Avoid
+
+- Don't hardcode API endpoints or model names
+- Don't ignore configuration validation errors
+- Don't mix sync and async code patterns
+- Don't create global state that isn't configuration
+- Don't write functions longer than 50 lines
+- Don't duplicate configuration logic
+
+## 📁 File Naming Conventions
+
+- Use snake_case for Python files
+- Configuration files should be descriptive: `config.py`, `env.example`
+- Keep agent implementations separate: `basic_agent.py`, `basic_agent_ollama.py`
+- Use `.md` extension for documentation
+
+## 🔧 Development Workflow
+
+1. Always test with both Ollama and Azure OpenAI configurations
+2. Update documentation when adding new features
+3. Validate environment variables on startup
+4. Use meaningful commit messages with emojis
+5. Keep the README.md up to date
+
+## 🎯 Focus Areas
+
+When working on this project, prioritize:
+1. Configuration management and validation
+2. Clear error messages and user guidance
+3. Async/await patterns for AI operations
+4. Comprehensive documentation
+5. Environment variable security 
