@@ -413,25 +413,86 @@ async def root():
         .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
         .card-hover { transition: all 0.3s ease; }
         .card-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .tab-btn-active { background: white !important; color: #6b46c1 !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important; }
+        .tab-btn-inactive { color: white; }
+        .tab-btn-inactive:hover { background: rgba(255, 255, 255, 0.2); }
+        .status-green { background-color: #10b981; }
+        .status-yellow { background-color: #f59e0b; }
+        .status-red { background-color: #ef4444; }
+        .bg-success { background-color: #d1fae5; border-color: #10b981; color: #065f46; }
+        .bg-warning { background-color: #fef3c7; border-color: #f59e0b; color: #92400e; }
+        .bg-error { background-color: #fecaca; border-color: #ef4444; color: #991b1b; }
+        .bg-info { background-color: #dbeafe; border-color: #3b82f6; color: #1e40af; }
     </style>
 </head>
 <body class="bg-gray-50">
-    <div id="root"></div>
+    <div id="root">
+        <!-- Loading fallback -->
+        <div class="min-h-screen flex items-center justify-center bg-gray-50">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Loading Semantic Evaluation Lab</h2>
+                <p class="text-gray-600">Please wait while the interface loads...</p>
+            </div>
+        </div>
+    </div>
+
     <script type="text/babel">
         const { useState, useEffect } = React;
+
+        // Color utility functions
+        function getStatusColor(service) {
+            if (service.status === 'running' && service.health === 'healthy') return 'status-green';
+            if (service.status === 'running') return 'status-yellow';
+            return 'status-red';
+        }
+
+        function getAlertClass(type) {
+            switch(type) {
+                case 'success': return 'bg-success';
+                case 'warning': return 'bg-warning';
+                case 'error': return 'bg-error';
+                default: return 'bg-info';
+            }
+        }
+
+        function getButtonClass(color, disabled = false) {
+            const baseClass = "py-2 px-4 rounded-lg transition-colors";
+            const disabledClass = disabled ? " opacity-50 cursor-not-allowed" : "";
+            
+            switch(color) {
+                case 'blue': return `bg-blue-500 hover:bg-blue-600 text-white ${baseClass}${disabledClass}`;
+                case 'green': return `bg-green-500 hover:bg-green-600 text-white ${baseClass}${disabledClass}`;
+                case 'purple': return `bg-purple-500 hover:bg-purple-600 text-white ${baseClass}${disabledClass}`;
+                case 'red': return `bg-red-500 hover:bg-red-600 text-white ${baseClass}${disabledClass}`;
+                case 'orange': return `bg-orange-500 hover:bg-orange-600 text-white ${baseClass}${disabledClass}`;
+                case 'indigo': return `bg-indigo-500 hover:bg-indigo-600 text-white ${baseClass}${disabledClass}`;
+                case 'gray': return `bg-gray-500 hover:bg-gray-600 text-white ${baseClass}${disabledClass}`;
+                default: return `bg-blue-500 hover:bg-blue-600 text-white ${baseClass}${disabledClass}`;
+            }
+        }
+
+        // API utility
+        const apiCall = async (endpoint, method = 'GET', body = null) => {
+            try {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                };
+                if (body) options.body = JSON.stringify(body);
+                
+                const response = await fetch(`/api${endpoint}`, options);
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                return { error: error.message };
+            }
+        };
 
         // Main App Component
         function App() {
             const [activeTab, setActiveTab] = useState('dashboard');
             const [services, setServices] = useState([]);
-            const [labConfig, setLabConfig] = useState({
-                lab_name: 'Semantic-Evaluation-Lab',
-                lab_environment: 'development',
-                use_ollama: true,
-                auto_run_tests: false,
-                enable_monitoring: true,
-                enable_debug_mode: true
-            });
             const [ws, setWs] = useState(null);
 
             // WebSocket connection
@@ -452,41 +513,13 @@ async def root():
                 };
             }, []);
 
-            // API calls
-            const apiCall = async (endpoint, method = 'GET', body = null) => {
-                try {
-                    const options = {
-                        method,
-                        headers: { 'Content-Type': 'application/json' },
-                    };
-                    if (body) options.body = JSON.stringify(body);
-                    
-                    const response = await fetch(`/api${endpoint}`, options);
-                    return await response.json();
-                } catch (error) {
-                    console.error('API call failed:', error);
-                    return { error: error.message };
-                }
-            };
-
-            const startLab = async (profile = 'dev') => {
-                return await apiCall(`/lab/start/${profile}`, 'POST');
-            };
-
-            const stopLab = async () => {
-                return await apiCall('/lab/stop', 'POST');
-            };
-
             return (
                 <div className="min-h-screen bg-gray-50">
                     <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
                     <main className="container mx-auto px-4 py-6">
-                        {activeTab === 'dashboard' && <Dashboard services={services} startLab={startLab} stopLab={stopLab} />}
+                        {activeTab === 'dashboard' && <Dashboard services={services} />}
                         {activeTab === 'tests' && <TestManager />}
-                        {activeTab === 'load-testing' && <LoadTesting />}
                         {activeTab === 'monitoring' && <Monitoring />}
-                        {activeTab === 'config' && <Configuration labConfig={labConfig} setLabConfig={setLabConfig} />}
-                        {activeTab === 'logs' && <LogViewer />}
                     </main>
                 </div>
             );
@@ -497,10 +530,7 @@ async def root():
             const tabs = [
                 { id: 'dashboard', name: 'Dashboard', icon: 'fas fa-tachometer-alt' },
                 { id: 'tests', name: 'Tests', icon: 'fas fa-flask' },
-                { id: 'load-testing', name: 'Load Testing', icon: 'fas fa-fire' },
-                { id: 'monitoring', name: 'Monitoring', icon: 'fas fa-chart-line' },
-                { id: 'config', name: 'Configuration', icon: 'fas fa-cog' },
-                { id: 'logs', name: 'Logs', icon: 'fas fa-file-alt' }
+                { id: 'monitoring', name: 'Monitoring', icon: 'fas fa-chart-line' }
             ];
 
             return (
@@ -520,8 +550,8 @@ async def root():
                                         onClick={() => setActiveTab(tab.id)}
                                         className={`px-4 py-2 rounded-lg transition-all duration-200 flex items-center space-x-2 ${
                                             activeTab === tab.id 
-                                                ? 'bg-white text-purple-700 shadow-md' 
-                                                : 'text-white hover:bg-white hover:bg-opacity-20'
+                                                ? 'tab-btn-active' 
+                                                : 'tab-btn-inactive'
                                         }`}
                                     >
                                         <i className={tab.icon}></i>
@@ -535,17 +565,44 @@ async def root():
             );
         }
 
+        // Alert Component
+        function Alert({ message, type, onClose }) {
+            if (!message) return null;
+
+            return (
+                <div className={`rounded-lg p-4 border ${getAlertClass(type)}`}>
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <i className={`fas ${
+                                type === 'success' ? 'fa-check-circle' :
+                                type === 'warning' ? 'fa-exclamation-triangle' :
+                                type === 'error' ? 'fa-times-circle' :
+                                'fa-info-circle'
+                            }`}></i>
+                        </div>
+                        <div className="ml-3 flex-1">
+                            {typeof message === 'string' ? <p>{message}</p> : message}
+                        </div>
+                        {onClose && (
+                            <div className="ml-auto pl-3">
+                                <button 
+                                    onClick={onClose}
+                                    className="text-gray-400 hover:text-gray-600"
+                                >
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         // Dashboard Component
-        function Dashboard({ services, startLab, stopLab }) {
+        function Dashboard({ services }) {
             const [loading, setLoading] = useState(false);
             const [alertMessage, setAlertMessage] = useState(null);
             const [alertType, setAlertType] = useState('info');
-
-            const getServiceColor = (service) => {
-                if (service.status === 'running' && service.health === 'healthy') return 'green';
-                if (service.status === 'running') return 'yellow';
-                return 'red';
-            };
 
             const showAlert = (message, type = 'info', duration = 5000) => {
                 setAlertMessage(message);
@@ -559,9 +616,9 @@ async def root():
                 try {
                     let result;
                     if (action === 'start') {
-                        result = await startLab(profile);
+                        result = await apiCall(`/lab/start/${profile}`, 'POST');
                     } else {
-                        result = await stopLab();
+                        result = await apiCall('/lab/stop', 'POST');
                     }
 
                     if (result.status === 'success') {
@@ -569,17 +626,15 @@ async def root():
                     } else if (result.status === 'error') {
                         if (result.error === 'docker_not_running') {
                             showAlert(
-                                <>
-                                    <div className="font-semibold mb-2">🐳 Docker Required</div>
-                                    <div className="mb-2">{result.message}</div>
-                                    {result.instructions && (
-                                        <ul className="list-disc list-inside text-sm">
-                                            {result.instructions.map((instruction, index) => (
-                                                <li key={index}>{instruction}</li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </>, 
+                                React.createElement('div', null,
+                                    React.createElement('div', { className: 'font-semibold mb-2' }, '🐳 Docker Required'),
+                                    React.createElement('div', { className: 'mb-2' }, result.message),
+                                    result.instructions && React.createElement('ul', { className: 'list-disc list-inside text-sm' },
+                                        result.instructions.map((instruction, index) => 
+                                            React.createElement('li', { key: index }, instruction)
+                                        )
+                                    )
+                                ), 
                                 'warning', 
                                 10000
                             );
@@ -598,37 +653,11 @@ async def root():
 
             return (
                 <div className="space-y-6">
-                    {/* Alert Message */}
-                    {alertMessage && (
-                        <div className={`rounded-lg p-4 ${
-                            alertType === 'success' ? 'bg-green-100 border border-green-400 text-green-700' :
-                            alertType === 'warning' ? 'bg-yellow-100 border border-yellow-400 text-yellow-700' :
-                            alertType === 'error' ? 'bg-red-100 border border-red-400 text-red-700' :
-                            'bg-blue-100 border border-blue-400 text-blue-700'
-                        }`}>
-                            <div className="flex">
-                                <div className="flex-shrink-0">
-                                    <i className={`fas ${
-                                        alertType === 'success' ? 'fa-check-circle' :
-                                        alertType === 'warning' ? 'fa-exclamation-triangle' :
-                                        alertType === 'error' ? 'fa-times-circle' :
-                                        'fa-info-circle'
-                                    }`}></i>
-                                </div>
-                                <div className="ml-3">
-                                    {typeof alertMessage === 'string' ? <p>{alertMessage}</p> : alertMessage}
-                                </div>
-                                <div className="ml-auto pl-3">
-                                    <button 
-                                        onClick={() => setAlertMessage(null)}
-                                        className="text-gray-400 hover:text-gray-600"
-                                    >
-                                        <i className="fas fa-times"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    <Alert 
+                        message={alertMessage} 
+                        type={alertType} 
+                        onClose={() => setAlertMessage(null)} 
+                    />
 
                     {/* Header */}
                     <div className="bg-white rounded-lg shadow-md p-6">
@@ -656,17 +685,17 @@ async def root():
                         <button
                             onClick={() => handleLabAction('start', 'full')}
                             disabled={loading}
-                            className="bg-green-500 hover:bg-green-600 text-white p-4 rounded-lg card-hover disabled:opacity-50"
+                            className={getButtonClass('green', loading) + " p-4 card-hover"}
                         >
                             <i className="fas fa-play text-2xl mb-2"></i>
                             <div className="font-semibold">Start Full Lab</div>
-                            <div className="text-sm opacity-90">All services + automation</div>
+                            <div className="text-sm opacity-90">All services</div>
                         </button>
                         
                         <button
                             onClick={() => handleLabAction('start', 'dev')}
                             disabled={loading}
-                            className="bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-lg card-hover disabled:opacity-50"
+                            className={getButtonClass('blue', loading) + " p-4 card-hover"}
                         >
                             <i className="fas fa-code text-2xl mb-2"></i>
                             <div className="font-semibold">Start Dev Lab</div>
@@ -676,7 +705,7 @@ async def root():
                         <button
                             onClick={() => handleLabAction('start', 'testing')}
                             disabled={loading}
-                            className="bg-purple-500 hover:bg-purple-600 text-white p-4 rounded-lg card-hover disabled:opacity-50"
+                            className={getButtonClass('purple', loading) + " p-4 card-hover"}
                         >
                             <i className="fas fa-flask text-2xl mb-2"></i>
                             <div className="font-semibold">Start Testing</div>
@@ -686,7 +715,7 @@ async def root():
                         <button
                             onClick={() => handleLabAction('stop')}
                             disabled={loading}
-                            className="bg-red-500 hover:bg-red-600 text-white p-4 rounded-lg card-hover disabled:opacity-50"
+                            className={getButtonClass('red', loading) + " p-4 card-hover"}
                         >
                             <i className="fas fa-stop text-2xl mb-2"></i>
                             <div className="font-semibold">Stop Lab</div>
@@ -711,7 +740,7 @@ async def root():
                                     <div key={service.name} className="bg-gray-50 rounded-lg p-4 card-hover">
                                         <div className="flex items-center justify-between mb-2">
                                             <h4 className="font-medium text-gray-800">{service.name}</h4>
-                                            <div className={`w-3 h-3 rounded-full bg-${getServiceColor(service)}-500`}></div>
+                                            <div className={`w-3 h-3 rounded-full ${getStatusColor(service)}`}></div>
                                         </div>
                                         <div className="text-sm text-gray-600">
                                             <div>Status: <span className="font-medium">{service.status}</span></div>
@@ -784,8 +813,21 @@ async def root():
 
         // Test Manager Component
         function TestManager() {
-            const [activeTests, setActiveTests] = useState([]);
             const [testHistory, setTestHistory] = useState([]);
+            const [selectedTest, setSelectedTest] = useState(null);
+
+            const addTestResult = (testType, result) => {
+                const timestamp = new Date().toISOString();
+                const testEntry = {
+                    id: Date.now(),
+                    type: testType,
+                    timestamp,
+                    result,
+                    status: result.status
+                };
+                
+                setTestHistory(prev => [testEntry, ...prev.slice(0, 9)]);
+            };
 
             return (
                 <div className="space-y-6">
@@ -803,6 +845,7 @@ async def root():
                                 icon="fas fa-cube"
                                 color="blue"
                                 endpoint="/tests/unit"
+                                onResult={(result) => addTestResult('unit', result)}
                             />
                             <TestCard 
                                 title="Functional Tests"
@@ -810,6 +853,7 @@ async def root():
                                 icon="fas fa-cogs"
                                 color="green"
                                 endpoint="/tests/functional"
+                                onResult={(result) => addTestResult('functional', result)}
                             />
                             <TestCard 
                                 title="LLM Evaluation"
@@ -817,59 +861,146 @@ async def root():
                                 icon="fas fa-brain"
                                 color="purple"
                                 endpoint="/tests/llm-eval"
+                                onResult={(result) => addTestResult('llm-eval', result)}
                             />
-                            <TestCard 
-                                title="Conversation Chains"
-                                description="Multi-turn conversation tests"
-                                icon="fas fa-comments"
-                                color="indigo"
-                                endpoint="/tests/conversations"
-                            />
-                            <TestCard 
-                                title="Load Tests"
-                                description="Performance and load testing"
-                                icon="fas fa-fire"
-                                color="red"
-                                endpoint="/tests/load"
-                            />
-                            <TestCard 
-                                title="All Tests"
-                                description="Run complete test suite"
-                                icon="fas fa-list-check"
-                                color="gray"
-                                endpoint="/tests/all"
-                            />
+                        </div>
+                    </div>
+
+                    {/* Test History */}
+                    <div className="bg-white rounded-lg shadow-md p-6">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                            <i className="fas fa-history mr-2 text-blue-500"></i>
+                            Recent Test Runs
+                        </h3>
+                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                            {testHistory.length === 0 ? (
+                                <div className="text-center text-gray-500 py-8">
+                                    <i className="fas fa-clock text-4xl mb-4 text-gray-300"></i>
+                                    <p>No tests run yet. Click a test card to get started!</p>
+                                </div>
+                            ) : (
+                                testHistory.map(test => (
+                                    <div
+                                        key={test.id}
+                                        className={`p-3 rounded-lg border-l-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                                            test.status === 'success' ? 'border-green-500 bg-green-50' :
+                                            test.status === 'error' ? 'border-red-500 bg-red-50' :
+                                            'border-yellow-500 bg-yellow-50'
+                                        }`}
+                                        onClick={() => setSelectedTest(test)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-3">
+                                                <i className={`fas ${
+                                                    test.status === 'success' ? 'fa-check-circle text-green-500' :
+                                                    test.status === 'error' ? 'fa-times-circle text-red-500' :
+                                                    'fa-exclamation-triangle text-yellow-500'
+                                                }`}></i>
+                                                <div>
+                                                    <span className="font-medium capitalize">{test.type} Tests</span>
+                                                    <div className="text-sm text-gray-500">
+                                                        {new Date(test.timestamp).toLocaleTimeString()}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                    test.status === 'success' ? 'bg-green-100 text-green-800' :
+                                                    test.status === 'error' ? 'bg-red-100 text-red-800' :
+                                                    'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                    {test.status.toUpperCase()}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>
             );
         }
 
-        function TestCard({ title, description, icon, color, endpoint }) {
+        function TestCard({ title, description, icon, color, endpoint, onResult }) {
             const [running, setRunning] = useState(false);
+            const [progress, setProgress] = useState(0);
 
             const runTest = async () => {
                 setRunning(true);
+                setProgress(0);
+                
+                const progressInterval = setInterval(() => {
+                    setProgress(prev => {
+                        const newProgress = prev + Math.random() * 20;
+                        return newProgress > 90 ? 90 : newProgress;
+                    });
+                }, 200);
+
                 try {
                     const response = await fetch(`/api${endpoint}`, { method: 'POST' });
                     const result = await response.json();
-                    console.log('Test result:', result);
+                    
+                    clearInterval(progressInterval);
+                    setProgress(100);
+                    
+                    if (onResult) {
+                        onResult(result);
+                    }
+                    
+                    setTimeout(() => {
+                        setProgress(0);
+                    }, 2000);
+                    
+                } catch (error) {
+                    clearInterval(progressInterval);
+                    setProgress(0);
+                    
+                    const errorResult = {
+                        status: 'error',
+                        message: 'Network error occurred',
+                        error: error.message
+                    };
+                    
+                    if (onResult) {
+                        onResult(errorResult);
+                    }
                 } finally {
                     setRunning(false);
                 }
             };
 
             return (
-                <div className="bg-gray-50 rounded-lg p-4 card-hover">
-                    <div className={`text-2xl text-${color}-500 mb-3`}>
+                <div className="bg-gray-50 rounded-lg p-4 card-hover relative overflow-hidden">
+                    {running && (
+                        <div className="absolute top-0 left-0 h-1 bg-blue-500 transition-all duration-300 ease-out"
+                             style={{ width: `${progress}%` }}></div>
+                    )}
+                    
+                    <div className={`text-2xl mb-3 ${
+                        color === 'blue' ? 'text-blue-500' :
+                        color === 'green' ? 'text-green-500' :
+                        color === 'purple' ? 'text-purple-500' :
+                        'text-gray-500'
+                    }`}>
                         <i className={icon}></i>
                     </div>
                     <h3 className="font-semibold text-gray-800 mb-2">{title}</h3>
                     <p className="text-gray-600 text-sm mb-4">{description}</p>
+                    
+                    {running && (
+                        <div className="mb-2 text-xs text-gray-500">
+                            <div className="flex justify-between items-center">
+                                <span>Progress</span>
+                                <span>{Math.round(progress)}%</span>
+                            </div>
+                        </div>
+                    )}
+                    
                     <button
                         onClick={runTest}
                         disabled={running}
-                        className={`w-full bg-${color}-500 hover:bg-${color}-600 text-white py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`w-full ${getButtonClass(color, running)}`}
                     >
                         {running ? (
                             <>
@@ -883,20 +1014,6 @@ async def root():
                             </>
                         )}
                     </button>
-                </div>
-            );
-        }
-
-        // Load Testing Component
-        function LoadTesting() {
-            return (
-                <div className="bg-white rounded-lg shadow-md p-6">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                        <i className="fas fa-fire mr-2 text-red-500"></i>
-                        Load Testing
-                    </h2>
-                    <p className="text-gray-600">Configure and execute load tests with real-time monitoring</p>
-                    {/* Load testing interface will be implemented here */}
                 </div>
             );
         }
@@ -918,7 +1035,7 @@ async def root():
                                     href="http://localhost:3000" 
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="bg-orange-500 text-white py-2 px-4 rounded-lg inline-flex items-center hover:bg-orange-600"
+                                    className={getButtonClass('orange') + " inline-flex items-center"}
                                 >
                                     <i className="fas fa-external-link-alt mr-2"></i>
                                     Open Grafana
@@ -931,7 +1048,7 @@ async def root():
                                     href="http://localhost:9090" 
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="bg-red-500 text-white py-2 px-4 rounded-lg inline-flex items-center hover:bg-red-600"
+                                    className={getButtonClass('red') + " inline-flex items-center"}
                                 >
                                     <i className="fas fa-external-link-alt mr-2"></i>
                                     Open Prometheus
@@ -943,40 +1060,21 @@ async def root():
             );
         }
 
-        // Configuration Component
-        function Configuration({ labConfig, setLabConfig }) {
-            return (
-                <div className="bg-white rounded-lg shadow-md p-6">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                        <i className="fas fa-cog mr-2 text-gray-500"></i>
-                        Lab Configuration
-                    </h2>
-                    <p className="text-gray-600">Manage environment variables and lab settings</p>
-                    {/* Configuration interface will be implemented here */}
-                </div>
-            );
-        }
-
-        // Log Viewer Component
-        function LogViewer() {
-            return (
-                <div className="bg-white rounded-lg shadow-md p-6">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                        <i className="fas fa-file-alt mr-2 text-blue-500"></i>
-                        Live Logs
-                    </h2>
-                    <p className="text-gray-600">Real-time log monitoring and analysis</p>
-                    {/* Log viewer interface will be implemented here */}
-                </div>
-            );
-        }
-
         // Render the app
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
     """)
+
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve a simple favicon to prevent 404 errors."""
+    return HTMLResponse(
+        content="",
+        status_code=204,
+        headers={"Content-Type": "image/x-icon"}
+    )
 
 @app.get("/api/health")
 async def health_check():
@@ -1148,28 +1246,89 @@ async def get_lab_status():
         "timestamp": datetime.now().isoformat()
     }
 
+def run_tests_directly(test_type: str) -> Dict[str, Any]:
+    """Run tests directly within the container using pytest."""
+    test_commands = {
+        "unit": "pytest tests/unit/ -v --tb=short",
+        "functional": "pytest tests/functional/ -v --tb=short", 
+        "llm-eval": "pytest tests/llm_evaluation/ -v --tb=short -m 'llm_eval or deepeval'",
+        "conversations": "pytest tests/llm_evaluation/test_conversation_chains.py -v --tb=short",
+        "all": "pytest tests/ -v --tb=short"
+    }
+    
+    if test_type == "load":
+        return {
+            "success": False,
+            "message": "Load testing requires docker-compose. Use the host system to run load tests.",
+            "instructions": [
+                "From host system, run: make auto-load-test-medium",
+                "Or access Locust web UI: docker-compose --profile load-test up -d",
+                "Then open http://localhost:8089"
+            ]
+        }
+    
+    if test_type not in test_commands:
+        return {
+            "success": False,
+            "message": f"Invalid test type. Must be one of: {list(test_commands.keys())}"
+        }
+    
+    # Ensure test directories exist
+    run_command("mkdir -p test-reports logs htmlcov")
+    
+    command = test_commands[test_type]
+    
+    # Add reporting options for better output
+    if test_type != "load":
+        command += f" --junitxml=test-reports/{test_type}-test-results.xml"
+        if test_type == "all":
+            command += " --cov=. --cov-report=html:htmlcov --cov-report=term-missing"
+    
+    return run_command(command)
+
 @app.post("/api/tests/{test_type}")
 async def run_test(test_type: str, background_tasks: BackgroundTasks):
     """Run a specific test type."""
-    test_commands = {
-        "unit": "auto-test-unit",
-        "functional": "auto-test-functional", 
-        "llm-eval": "auto-test-llm-eval",
-        "conversations": "auto-test-conversations",
-        "load": "auto-load-test-medium",
-        "all": "auto-test-all"
-    }
+    valid_test_types = ["unit", "functional", "llm-eval", "conversations", "load", "all"]
     
-    if test_type not in test_commands:
-        raise HTTPException(status_code=400, detail=f"Invalid test type. Must be one of: {list(test_commands.keys())}")
+    if test_type not in valid_test_types:
+        raise HTTPException(status_code=400, detail=f"Invalid test type. Must be one of: {valid_test_types}")
     
-    command = f"make {test_commands[test_type]}"
-    result = run_command(command)
+    # Check if we can run make commands (docker-compose available)
+    make_check = run_command("which make && which docker-compose")
+    
+    if make_check["success"]:
+        # Use make commands if docker-compose is available
+        test_commands = {
+            "unit": "auto-test-unit",
+            "functional": "auto-test-functional", 
+            "llm-eval": "auto-test-llm-eval",
+            "conversations": "auto-test-conversations",
+            "load": "auto-load-test-medium",
+            "all": "auto-test-all"
+        }
+        command = f"make {test_commands[test_type]}"
+        result = run_command(command)
+    else:
+        # Fallback to direct pytest execution
+        result = run_tests_directly(test_type)
     
     if result["success"]:
-        return {"status": "success", "message": f"{test_type} tests started", "output": result["stdout"]}
+        return {
+            "status": "success", 
+            "message": f"{test_type} tests completed successfully", 
+            "output": result["stdout"],
+            "fallback_mode": not make_check["success"]
+        }
     else:
-        return {"status": "error", "message": f"Failed to start {test_type} tests", "error": result["stderr"]}
+        error_message = result.get("message", f"Failed to run {test_type} tests")
+        return {
+            "status": "error", 
+            "message": error_message, 
+            "error": result.get("stderr", result.get("error", "Unknown error")),
+            "instructions": result.get("instructions"),
+            "fallback_mode": not make_check["success"]
+        }
 
 @app.post("/api/load-test")
 async def run_load_test(config: LoadTestConfig):
@@ -1240,4 +1399,4 @@ if __name__ == "__main__":
         port=5000,
         reload=True,
         log_level="info"
-    ) 
+    )
