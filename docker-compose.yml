@@ -1,6 +1,8 @@
 # Semantic Evaluation Lab - Docker Compose Configuration
 # Multi-service environment for AI evaluation, testing, and monitoring
 
+name: semantic-evaluation-lab
+
 # Environment Variables for Semantic Evaluation Lab
 # These variables control automated behavior, testing, monitoring, and system configuration
 x-common-variables: &common-variables

@@ -1,0 +1,26 @@
+	@echo "✅ Validating configuration..."
+	docker-compose config > /dev/null && echo "✅ Docker Compose configuration is valid" || echo "❌ Docker Compose configuration has errors"
+
+config-example-quick-start: ## 🚀 Generate quick start configuration
+	@echo "🚀 Generating quick start configuration..."
+	@cat > .env.quickstart << 'EOF'
+# Quick Start Configuration
+LAB_ENVIRONMENT=development
+AUTO_RUN_TESTS=true
+AUTO_RUN_UNIT_TESTS=true
+AUTO_RUN_FUNCTIONAL_TESTS=true
+AUTO_SETUP_MODELS=true
+ENABLE_MONITORING=true
+LOCUST_USERS=1
+LOCUST_RUN_TIME=120s
+EOF
+	@echo "✅ Quick start configuration saved to .env.quickstart"
+	@echo "To use: mv .env.quickstart .env"
+
+config-example-full-eval: ## 🔬 Generate full evaluation configuration
+	@echo "🔬 Generating full evaluation configuration..."
+	@cat > .env.fulleval << 'EOF'
+# Full Evaluation Configuration
+LAB_ENVIRONMENT=evaluation
+AUTO_RUN_TESTS=true
+AUTO_RUN_UNIT_TESTS=true
