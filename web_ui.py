@@ -33,6 +33,15 @@ from pydantic import BaseModel
 import requests
 from starlette.websockets import WebSocketState
 
+# Optional Docker import with fallback
+try:
+    import docker
+    from docker.errors import DockerException
+    DOCKER_AVAILABLE = True
+except ImportError:
+    DOCKER_AVAILABLE = False
+    logger = None
+
 # Import our existing components
 from config import app_config
 import structlog
@@ -120,6 +129,95 @@ class ServiceStatus(BaseModel):
     url: Optional[str] = None
 
 # Helper functions
+def get_docker_client():
+    """Get Docker client instance."""
+    if not DOCKER_AVAILABLE:
+        return None
+    try:
+        client = docker.from_env()
+        # Test connection
+        client.ping()
+        return client
+    except DockerException as e:
+        if logger:
+            logger.error(f"Docker connection failed: {e}")
+        return None
+
+def check_docker_status() -> Dict[str, Any]:
+    """Check if Docker is running and accessible."""
+    if DOCKER_AVAILABLE:
+        try:
+            client = get_docker_client()
+            if client is None:
+                return {
+                    "success": False,
+                    "message": "Cannot connect to Docker daemon. Is Docker running?",
+                    "error": "docker_not_running"
+                }
+            
+            # Test with a simple command
+            info = client.info()
+            return {
+                "success": True,
+                "message": "Docker is running",
+                "info": info
+            }
+        except DockerException as e:
+            if "Cannot connect to the Docker daemon" in str(e):
+                return {
+                    "success": False,
+                    "message": "Cannot connect to Docker daemon. Is Docker running?",
+                    "error": "docker_not_running"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Docker check failed: {str(e)}",
+                    "error": "docker_error"
+                }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Unexpected error: {str(e)}",
+                "error": "unexpected_error"
+            }
+    else:
+        # Fallback when docker library is not available
+        # Check if Docker socket exists (indicates Docker is available)
+        docker_socket_path = "/var/run/docker.sock"
+        if os.path.exists(docker_socket_path):
+            # Socket exists, assume Docker is available
+            return {
+                "success": True,
+                "message": "Docker socket detected - Docker appears to be running"
+            }
+        else:
+            # Try subprocess as last resort
+            result = run_command("docker info")
+            if result["success"]:
+                return {
+                    "success": True,
+                    "message": "Docker is running"
+                }
+            elif "not found" in result["stderr"]:
+                return {
+                    "success": False,
+                    "message": "Docker CLI not available in container. Use Docker socket or install Docker CLI.",
+                    "error": "docker_cli_not_available"
+                }
+            elif "Cannot connect to the Docker daemon" in result["stderr"]:
+                return {
+                    "success": False,
+                    "message": "Cannot connect to Docker daemon. Is Docker running?",
+                    "error": "docker_not_running"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Docker check failed: {result['stderr']}",
+                    "error": "docker_error"
+                }
+
 def run_command(command: str, cwd: str = None) -> Dict[str, Any]:
     """Execute a shell command and return the result."""
     try:
@@ -164,44 +262,112 @@ def get_docker_services() -> List[ServiceStatus]:
     """Get status of all Docker Compose services."""
     services = []
     
-    try:
-        result = run_command("docker-compose ps --format json")
-        if result["success"]:
-            lines = result["stdout"].strip().split('\n')
-            for line in lines:
-                if line.strip():
-                    try:
-                        service_data = json.loads(line)
-                        status = "running" if service_data.get("State") == "running" else "stopped"
-                        
-                        # Determine health based on service type
-                        health = "unknown"
-                        url = None
-                        
-                        service_name = service_data.get("Service", "")
-                        if service_name == "grafana":
-                            url = "http://localhost:3000"
-                            health = get_service_health("http://localhost:3000")
-                        elif service_name == "prometheus":
-                            url = "http://localhost:9090"
-                            health = get_service_health("http://localhost:9090")
-                        elif service_name == "ollama":
-                            url = "http://localhost:11434"
-                            health = get_service_health("http://localhost:11434")
-                        elif service_name == "metrics-exporter":
-                            url = "http://localhost:8000"
-                            health = get_service_health("http://localhost:8000")
-                        
-                        services.append(ServiceStatus(
-                            name=service_name,
-                            status=status,
-                            health=health,
-                            url=url
-                        ))
-                    except json.JSONDecodeError:
-                        continue
-    except Exception as e:
-        logger.error(f"Error getting Docker services: {e}")
+    if DOCKER_AVAILABLE:
+        try:
+            client = get_docker_client()
+            if client is None:
+                return services
+            
+            # Get all containers with the project label
+            containers = client.containers.list(all=True, filters={
+                "label": "com.docker.compose.project=semantic-evaluation-lab"
+            })
+            
+            for container in containers:
+                try:
+                    service_name = container.labels.get("com.docker.compose.service", container.name)
+                    status = "running" if container.status == "running" else "stopped"
+                    
+                    # Determine health based on service type and container health
+                    health = "unknown"
+                    url = None
+                    
+                    # Check container health if available
+                    if hasattr(container, 'attrs') and 'State' in container.attrs:
+                        health_status = container.attrs['State'].get('Health', {}).get('Status')
+                        if health_status == 'healthy':
+                            health = "healthy"
+                        elif health_status == 'unhealthy':
+                            health = "unhealthy"
+                        elif status == "running":
+                            # If no health check but running, test with HTTP
+                            if service_name == "grafana":
+                                url = "http://localhost:3000"
+                                health = get_service_health("http://localhost:3000")
+                            elif service_name == "prometheus":
+                                url = "http://localhost:9090"
+                                health = get_service_health("http://localhost:9090")
+                            elif service_name == "ollama":
+                                url = "http://localhost:11434"
+                                health = get_service_health("http://localhost:11434/api/tags")
+                            elif service_name == "metrics-exporter":
+                                url = "http://localhost:8000"
+                                health = get_service_health("http://localhost:8000")
+                            elif service_name == "web-ui":
+                                url = "http://localhost:5000"
+                                health = "healthy"  # We're running, so we're healthy
+                            else:
+                                health = "healthy" if status == "running" else "stopped"
+                    
+                    services.append(ServiceStatus(
+                        name=service_name,
+                        status=status,
+                        health=health,
+                        url=url
+                    ))
+                    
+                except Exception as e:
+                    if logger:
+                        logger.error(f"Error processing container {container.name}: {e}")
+                    continue
+                    
+        except Exception as e:
+            if logger:
+                logger.error(f"Error getting Docker services: {e}")
+    else:
+        # Fallback to subprocess when docker library is not available
+        try:
+            result = run_command("docker-compose ps --format json")
+            if result["success"]:
+                lines = result["stdout"].strip().split('\n')
+                for line in lines:
+                    if line.strip():
+                        try:
+                            service_data = json.loads(line)
+                            status = "running" if service_data.get("State") == "running" else "stopped"
+                            
+                            # Determine health based on service type
+                            health = "unknown"
+                            url = None
+                            
+                            service_name = service_data.get("Service", "")
+                            if service_name == "grafana":
+                                url = "http://localhost:3000"
+                                health = get_service_health("http://localhost:3000")
+                            elif service_name == "prometheus":
+                                url = "http://localhost:9090"
+                                health = get_service_health("http://localhost:9090")
+                            elif service_name == "ollama":
+                                url = "http://localhost:11434"
+                                health = get_service_health("http://localhost:11434/api/tags")
+                            elif service_name == "metrics-exporter":
+                                url = "http://localhost:8000"
+                                health = get_service_health("http://localhost:8000")
+                            elif service_name == "web-ui":
+                                url = "http://localhost:5000"
+                                health = "healthy"  # We're running, so we're healthy
+                            
+                            services.append(ServiceStatus(
+                                name=service_name,
+                                status=status,
+                                health=health,
+                                url=url
+                            ))
+                        except json.JSONDecodeError:
+                            continue
+        except Exception as e:
+            if logger:
+                logger.error(f"Error getting Docker services: {e}")
     
     return services
 
@@ -860,9 +1026,9 @@ async def start_lab(profile: str, background_tasks: BackgroundTasks):
     }
     
     # Check if Docker is running first
-    docker_check = run_command("docker info")
+    docker_check = check_docker_status()
     if not docker_check["success"]:
-        if "Cannot connect to the Docker daemon" in docker_check["stderr"]:
+        if docker_check["error"] == "docker_not_running":
             return {
                 "status": "error",
                 "message": "Docker is not running. Please start Docker Desktop and try again.",
@@ -874,11 +1040,22 @@ async def start_lab(profile: str, background_tasks: BackgroundTasks):
                     "4. Or try 'Demo' mode for UI testing without Docker"
                 ]
             }
+        elif docker_check["error"] == "docker_cli_not_available":
+            return {
+                "status": "warning",
+                "message": "Docker CLI not available in container, but Docker socket detected. Lab management from container is limited.",
+                "error": "docker_cli_not_available",
+                "instructions": [
+                    "1. Try 'Demo' mode for UI testing",
+                    "2. Or start lab services from host system using 'docker-compose up'",
+                    "3. Container can still monitor running services"
+                ]
+            }
         else:
             return {
                 "status": "error", 
-                "message": f"Docker check failed: {docker_check['stderr']}",
-                "error": "docker_error"
+                "message": docker_check["message"],
+                "error": docker_check["error"]
             }
     
     compose_profile = profile_map[profile]
@@ -913,9 +1090,9 @@ async def start_lab(profile: str, background_tasks: BackgroundTasks):
 async def stop_lab():
     """Stop all lab services."""
     # Check if Docker is running first
-    docker_check = run_command("docker info")
+    docker_check = check_docker_status()
     if not docker_check["success"]:
-        if "Cannot connect to the Docker daemon" in docker_check["stderr"]:
+        if docker_check["error"] == "docker_not_running":
             return {
                 "status": "warning",
                 "message": "Docker is not running. No services to stop.",
@@ -925,8 +1102,8 @@ async def stop_lab():
         else:
             return {
                 "status": "error", 
-                "message": f"Docker check failed: {docker_check['stderr']}",
-                "error": "docker_error"
+                "message": docker_check["message"],
+                "error": docker_check["error"]
             }
     
     command = "docker-compose down"

@@ -38,6 +38,7 @@ fastapi==0.115.0
 uvicorn[standard]==0.32.0
 websockets==13.1
 pydantic==2.9.2
+docker==7.1.0
 
 # Development Dependencies
 ipykernel==6.29.5

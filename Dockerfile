@@ -8,15 +8,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies
+# Install system dependencies including Docker CLI
 RUN apt-get update && apt-get install -y \
     curl \
     git \
     build-essential \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && mkdir -m 0755 -p /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Create app user and add to docker group for socket access
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && groupadd -f docker \
+    && usermod -aG docker appuser
 
 # Set work directory
 WORKDIR /app
