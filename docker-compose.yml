@@ -1,4 +1,5 @@
-version: '3.8'
+# Semantic Evaluation Lab - Docker Compose Configuration
+# Multi-service environment for AI evaluation, testing, and monitoring
 
 # Environment Variables for Semantic Evaluation Lab
 # These variables control automated behavior, testing, monitoring, and system configuration
@@ -528,41 +529,9 @@ services:
       OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
       OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
-    command: |
-      sh -c "
-        echo '🚀 Starting Ollama LLM Service...' &&
-        ollama serve &
-        
-        if [ '${AUTO_SETUP_MODELS}' = 'true' ]; then
-          echo 'Waiting for Ollama to be ready...' &&
-          sleep 10 &&
-          
-          # Pull default model
-          echo '📥 Pulling default model: ${OLLAMA_MODEL_ID}' &&
-          ollama pull ${OLLAMA_MODEL_ID} || echo 'Default model pull completed' &&
-          
-          # Pull additional models if specified
-          for model in \$(echo '${OLLAMA_MODELS}' | tr ',' ' '); do
-            if [ \"\$model\" != '${OLLAMA_MODEL_ID}' ]; then
-              echo \"📥 Pulling additional model: \$model\" &&
-              ollama pull \$model || echo \"Model \$model pull completed\"
-            fi
-          done &&
-          
-          echo '✅ Model setup completed!'
-        fi &&
-        
-        # Keep the service running
-        wait
-      "
     networks:
       - semantic-kernel-network
-    profiles:
-      - ollama
-      - dev
-      - all
-      - monitoring
-      - load-test
+    # Note: No profiles defined - this service runs by default
     restart: unless-stopped
     deploy:
       resources:
@@ -645,14 +614,10 @@ services:
       DOCKER_HOST: unix:///var/run/docker.sock
     command: ["python", "web_ui.py"]
     depends_on:
-      - lab-init
       - ollama
     networks:
       - semantic-kernel-network
-    profiles:
-      - web-ui
-      - dev
-      - all
+    # Note: No profiles defined - this service runs by default
     restart: unless-stopped
 
   # Metrics exporter service

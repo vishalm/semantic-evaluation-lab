@@ -7,7 +7,7 @@ structlog==24.1.0
 # AI Provider Dependencies
 openai==1.51.2
 azure-identity==1.19.0
-azure-cognitiveservices-language-textanalytics==5.2.0
+azure-cognitiveservices-language-textanalytics==0.2.2
 ollama==0.3.3
 
 # Testing Dependencies
@@ -40,8 +40,6 @@ websockets==13.1
 pydantic==2.9.2
 
 # Development Dependencies
-jupyter==1.1.1
-jupyterlab==4.3.2
 ipykernel==6.29.5
 
 # Environment variable management
@@ -61,7 +59,7 @@ psutil>=5.9.0
 rich>=13.0.0
 
 # Optional: HTTP client improvements
-httpx>=0.25.0
+httpx>=0.23.0,<0.28.0
 requests>=2.31.0
 
 # Testing dependencies
@@ -82,15 +80,6 @@ bandit>=1.7.0
 
 # Development dependencies
 pre-commit>=3.3.0
-
-# Additional testing utilities (optional)
-# pytest-xdist>=3.3.0  # Parallel test execution
-# pytest-benchmark>=4.0.0  # Performance benchmarking
-# pytest-timeout>=2.1.0  # Test timeout handling
-
-# Development dependencies (uncomment if needed)
-# pre-commit>=3.3.0
-# jupyter>=1.0.0
 
 # Structured logging and monitoring
 structlog>=23.1.0

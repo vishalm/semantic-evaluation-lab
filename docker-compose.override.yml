@@ -1,8 +1,6 @@
 # Docker Compose override for development environment
 # This file is automatically loaded when running docker-compose commands
 
-version: '3.8'
-
 services:
   # Override app service for development
   app:
