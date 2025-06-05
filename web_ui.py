@@ -754,15 +754,17 @@ async def start_lab(profile: str, background_tasks: BackgroundTasks):
     if profile not in valid_profiles:
         raise HTTPException(status_code=400, detail=f"Invalid profile. Must be one of: {valid_profiles}")
     
-    command_map = {
-        "dev": "lab-start",
-        "full": "lab-start-full", 
-        "testing": "lab-start-testing",
-        "monitoring": "monitoring-start",
-        "load-testing": "lab-start-load-testing"
+    # Use docker-compose directly instead of make commands
+    profile_map = {
+        "dev": "dev",
+        "full": "all", 
+        "testing": "testing",
+        "monitoring": "monitoring",
+        "load-testing": "load-testing"
     }
     
-    command = f"make {command_map[profile]}"
+    compose_profile = profile_map[profile]
+    command = f"docker-compose --profile {compose_profile} up -d"
     result = run_command(command)
     
     if result["success"]:
@@ -773,7 +775,8 @@ async def start_lab(profile: str, background_tasks: BackgroundTasks):
 @app.post("/api/lab/stop")
 async def stop_lab():
     """Stop all lab services."""
-    result = run_command("make lab-stop")
+    command = "docker-compose down"
+    result = run_command(command)
     
     if result["success"]:
         return {"status": "success", "message": "Lab stopped", "output": result["stdout"]}

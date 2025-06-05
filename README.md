@@ -1866,3 +1866,216 @@ Typical performance benchmarks:
 | **DeepEval Quality** | >0.8 | >0.75 | >0.7 |
 
 For detailed load testing configuration, see the [Monitoring Setup Guide](docs/MONITORING_SETUP.md).
+
+## 🌐 **Web UI Interface - Mission Control for AI Evaluation**
+
+**Transform complex AI evaluation workflows into an intuitive, visual experience with our comprehensive Web UI.**
+
+### **🎯 Quick Start**
+
+```bash
+# Start the complete demo environment
+make ui-demo
+
+# Access the interface
+open http://localhost:5000
+```
+
+### **🎨 Interface Overview**
+
+#### **📊 Dashboard Tab - Lab Control Center**
+- **Real-time Service Monitoring**: Live health checks with color-coded indicators
+- **One-Click Lab Management**: Start/stop different lab profiles instantly
+- **Live Statistics**: Active services, health status, and system metrics
+- **Service Integration**: Direct links to Grafana, Prometheus, and Locust
+
+#### **🧪 Tests Tab - Automated Quality Assurance**
+- **Visual Test Cards**: Intuitive interface for all test types
+- **One-Click Execution**: Run unit, functional, LLM eval, and conversation tests
+- **Real-time Feedback**: Live status updates and progress indicators
+- **Intelligent Skipping**: Automatic dependency detection and graceful degradation
+
+#### **🔥 Load Testing Tab - Performance Analysis**
+- **Interactive Locust Integration**: Configure and monitor load tests
+- **Quality Under Load**: DeepEval metrics during performance testing
+- **Real-time Analytics**: Live performance and quality metrics
+- **Scenario Management**: Multiple load testing configurations
+
+#### **📈 Monitoring Tab - Observability Hub**
+- **Grafana Integration**: Embedded dashboards and direct access
+- **Prometheus Explorer**: Metrics querying and visualization
+- **Health Monitoring**: System-wide health checks and alerts
+- **Performance Analytics**: Historical trends and real-time data
+
+#### **⚙️ Configuration Tab - Environment Management**
+- **Dynamic Configuration**: Runtime environment variable management
+- **Template System**: Pre-configured scenarios (dev, testing, production)
+- **Validation**: Real-time configuration validation and error checking
+- **Environment Profiles**: Quick switching between different setups
+
+#### **📋 Logs Tab - Real-time Debugging**
+- **Live Log Streaming**: Real-time log aggregation from all services
+- **Service Filtering**: Focus on specific services or components
+- **Search & Filter**: Advanced log search and filtering capabilities
+- **Structured Display**: JSON-formatted logs with syntax highlighting
+
+### **🛠️ Technical Architecture**
+
+#### **Backend (FastAPI)**
+```python
+# Modern Python web framework with real-time capabilities
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    # Real-time service updates every 10 seconds
+    
+@app.post("/api/lab/start/{profile}")
+async def start_lab(profile: str):
+    # One-click lab management
+    command = f"make lab-start-{profile}"
+    result = run_command(command)
+    return {"status": "success", "output": result["stdout"]}
+```
+
+#### **Frontend (React)**
+```javascript
+// Modern React interface with real-time updates
+function Dashboard({ services, startLab, stopLab }) {
+    const [ws, setWs] = useState(null);
+    
+    useEffect(() => {
+        const websocket = new WebSocket(`ws://${window.location.host}/ws`);
+        websocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'service_update') {
+                setServices(data.data);
+            }
+        };
+        setWs(websocket);
+    }, []);
+    
+    return (
+        <div className="dashboard">
+            {/* Real-time service cards */}
+            {services.map(service => (
+                <ServiceCard key={service.name} service={service} />
+            ))}
+        </div>
+    );
+}
+```
+
+### **🎛️ Usage Scenarios**
+
+#### **1. Daily Development Workflow**
+```bash
+# Start development environment with UI
+make ui-dev
+
+# Use the interface to:
+# - Monitor service health
+# - Run tests as needed
+# - Check logs for debugging
+# - Monitor performance metrics
+```
+
+#### **2. Demo/Presentation Setup**
+```bash
+# Start complete demo environment
+make ui-demo
+
+# Perfect for showcasing:
+# - Real-time AI evaluation capabilities
+# - Professional monitoring dashboards
+# - One-click operations
+# - Comprehensive observability
+```
+
+#### **3. Production Monitoring**
+```bash
+# Start production monitoring
+make ui-full
+
+# Monitor:
+# - System health and performance
+# - Quality metrics and trends
+# - Load testing results
+# - Alert management
+```
+
+#### **4. Research & Development**
+```bash
+# Start research environment
+make ui-dev
+
+# Research features:
+# - LLM evaluation experiments
+# - Conversation chain analysis
+# - Quality metric exploration
+# - Performance benchmarking
+```
+
+### **🎯 Key Benefits**
+
+#### **For Developers**
+- **Visual Service Management**: No more complex Docker commands
+- **Real-time Feedback**: Immediate status updates and results
+- **Integrated Testing**: Run all test types from one interface
+- **Live Debugging**: Stream logs directly in the browser
+
+#### **For DevOps/SRE**
+- **Centralized Monitoring**: All services and metrics in one place
+- **Health Management**: Real-time health checks and alerts
+- **Automation Control**: Manage automated processes visually
+- **Performance Insights**: Load testing with quality monitoring
+
+#### **For Researchers/Analysts**
+- **Visual LLM Evaluation**: Intuitive interface for AI quality assessment
+- **Conversation Analysis**: Multi-turn conversation testing and analysis
+- **Quality Metrics**: DeepEval integration with visual feedback
+- **Result Visualization**: Comprehensive reporting and analytics
+
+#### **For Demos/Presentations**
+- **Professional Interface**: Modern, clean design for presentations
+- **One-Click Operations**: Simplified management for live demos
+- **Real-time Updates**: Dynamic demonstrations with live data
+- **Comprehensive Coverage**: All features accessible from one interface
+
+### **🚀 Advanced Features**
+
+#### **Real-time Service Orchestration**
+- Automatic dependency detection and health-based startup sequences
+- Graceful degradation when services are unavailable
+- Auto-recovery mechanisms and intelligent retry logic
+
+#### **Intelligent Test Management**
+- Environment-aware test execution with automatic dependency checking
+- Quality threshold monitoring with visual alerts
+- Comprehensive reporting with exportable results
+
+#### **Dynamic Configuration Management**
+- Runtime configuration updates without service restarts
+- Environment template system for different scenarios
+- Validation and error handling with user-friendly feedback
+
+#### **Monitoring Integration**
+- Embedded Grafana dashboards with seamless navigation
+- Prometheus metrics explorer with custom queries
+- Alert management with multiple notification channels
+
+### **📱 Responsive Design**
+
+The Web UI works perfectly on:
+- **Desktop**: Full-featured experience with all capabilities
+- **Tablet**: Touch-optimized interface with responsive layout
+- **Mobile**: Essential features accessible on mobile devices
+- **Progressive Web App**: Installable with offline capabilities
+
+### **🔐 Security & Access Control**
+
+- **Docker Socket Access**: Secure container management with minimal privileges
+- **Network Isolation**: Internal Docker network communication only
+- **No Persistent Storage**: Real-time data only, no credential storage
+- **Local-First**: Designed for local development with optional remote access
+
+---
