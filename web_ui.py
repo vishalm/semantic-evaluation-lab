@@ -372,6 +372,8 @@ async def root():
         // Dashboard Component
         function Dashboard({ services, startLab, stopLab }) {
             const [loading, setLoading] = useState(false);
+            const [alertMessage, setAlertMessage] = useState(null);
+            const [alertType, setAlertType] = useState('info');
 
             const getServiceColor = (service) => {
                 if (service.status === 'running' && service.health === 'healthy') return 'green';
@@ -379,14 +381,50 @@ async def root():
                 return 'red';
             };
 
+            const showAlert = (message, type = 'info', duration = 5000) => {
+                setAlertMessage(message);
+                setAlertType(type);
+                setTimeout(() => setAlertMessage(null), duration);
+            };
+
             const handleLabAction = async (action, profile = null) => {
                 setLoading(true);
+                setAlertMessage(null);
                 try {
+                    let result;
                     if (action === 'start') {
-                        await startLab(profile);
+                        result = await startLab(profile);
                     } else {
-                        await stopLab();
+                        result = await stopLab();
                     }
+
+                    if (result.status === 'success') {
+                        showAlert(`✅ ${result.message}`, 'success');
+                    } else if (result.status === 'error') {
+                        if (result.error === 'docker_not_running') {
+                            showAlert(
+                                <>
+                                    <div className="font-semibold mb-2">🐳 Docker Required</div>
+                                    <div className="mb-2">{result.message}</div>
+                                    {result.instructions && (
+                                        <ul className="list-disc list-inside text-sm">
+                                            {result.instructions.map((instruction, index) => (
+                                                <li key={index}>{instruction}</li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </>, 
+                                'warning', 
+                                10000
+                            );
+                        } else {
+                            showAlert(`❌ ${result.message}`, 'error');
+                        }
+                    } else if (result.status === 'warning') {
+                        showAlert(`⚠️ ${result.message}`, 'warning', 7000);
+                    }
+                } catch (error) {
+                    showAlert(`❌ Network error: ${error.message}`, 'error');
                 } finally {
                     setLoading(false);
                 }
@@ -394,6 +432,38 @@ async def root():
 
             return (
                 <div className="space-y-6">
+                    {/* Alert Message */}
+                    {alertMessage && (
+                        <div className={`rounded-lg p-4 ${
+                            alertType === 'success' ? 'bg-green-100 border border-green-400 text-green-700' :
+                            alertType === 'warning' ? 'bg-yellow-100 border border-yellow-400 text-yellow-700' :
+                            alertType === 'error' ? 'bg-red-100 border border-red-400 text-red-700' :
+                            'bg-blue-100 border border-blue-400 text-blue-700'
+                        }`}>
+                            <div className="flex">
+                                <div className="flex-shrink-0">
+                                    <i className={`fas ${
+                                        alertType === 'success' ? 'fa-check-circle' :
+                                        alertType === 'warning' ? 'fa-exclamation-triangle' :
+                                        alertType === 'error' ? 'fa-times-circle' :
+                                        'fa-info-circle'
+                                    }`}></i>
+                                </div>
+                                <div className="ml-3">
+                                    {typeof alertMessage === 'string' ? <p>{alertMessage}</p> : alertMessage}
+                                </div>
+                                <div className="ml-auto pl-3">
+                                    <button 
+                                        onClick={() => setAlertMessage(null)}
+                                        className="text-gray-400 hover:text-gray-600"
+                                    >
+                                        <i className="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Header */}
                     <div className="bg-white rounded-lg shadow-md p-6">
                         <h2 className="text-2xl font-bold text-gray-800 mb-4">
@@ -406,7 +476,17 @@ async def root():
                     </div>
 
                     {/* Quick Actions */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <button
+                            onClick={() => handleLabAction('start', 'demo')}
+                            disabled={loading}
+                            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white p-4 rounded-lg card-hover disabled:opacity-50 border-2 border-purple-300"
+                        >
+                            <i className="fas fa-magic text-2xl mb-2"></i>
+                            <div className="font-semibold">Demo Mode</div>
+                            <div className="text-sm opacity-90">UI Demo (No Docker)</div>
+                        </button>
+                        
                         <button
                             onClick={() => handleLabAction('start', 'full')}
                             disabled={loading}
@@ -750,9 +830,25 @@ async def get_services():
 @app.post("/api/lab/start/{profile}")
 async def start_lab(profile: str, background_tasks: BackgroundTasks):
     """Start the lab with specified profile."""
-    valid_profiles = ["dev", "full", "testing", "monitoring", "load-testing"]
+    valid_profiles = ["dev", "full", "testing", "monitoring", "load-testing", "demo"]
     if profile not in valid_profiles:
         raise HTTPException(status_code=400, detail=f"Invalid profile. Must be one of: {valid_profiles}")
+    
+    # Demo mode - simulate success without Docker
+    if profile == "demo":
+        await asyncio.sleep(2)  # Simulate startup time
+        return {
+            "status": "success",
+            "message": f"Demo lab started successfully! (Simulated)",
+            "profile": profile,
+            "demo_mode": True,
+            "services_simulated": [
+                {"name": "ollama", "status": "running", "health": "healthy"},
+                {"name": "prometheus", "status": "running", "health": "healthy"},
+                {"name": "grafana", "status": "running", "health": "healthy"},
+                {"name": "metrics-exporter", "status": "running", "health": "healthy"}
+            ]
+        }
     
     # Use docker-compose directly instead of make commands
     profile_map = {
@@ -763,6 +859,28 @@ async def start_lab(profile: str, background_tasks: BackgroundTasks):
         "load-testing": "load-testing"
     }
     
+    # Check if Docker is running first
+    docker_check = run_command("docker info")
+    if not docker_check["success"]:
+        if "Cannot connect to the Docker daemon" in docker_check["stderr"]:
+            return {
+                "status": "error",
+                "message": "Docker is not running. Please start Docker Desktop and try again.",
+                "error": "docker_not_running",
+                "instructions": [
+                    "1. Start Docker Desktop application",
+                    "2. Wait for Docker to fully start",
+                    "3. Try starting the lab again",
+                    "4. Or try 'Demo' mode for UI testing without Docker"
+                ]
+            }
+        else:
+            return {
+                "status": "error", 
+                "message": f"Docker check failed: {docker_check['stderr']}",
+                "error": "docker_error"
+            }
+    
     compose_profile = profile_map[profile]
     command = f"docker-compose --profile {compose_profile} up -d"
     result = run_command(command)
@@ -770,18 +888,67 @@ async def start_lab(profile: str, background_tasks: BackgroundTasks):
     if result["success"]:
         return {"status": "success", "message": f"Lab started with {profile} profile", "output": result["stdout"]}
     else:
-        raise HTTPException(status_code=500, detail=f"Failed to start lab: {result['stderr']}")
+        # Parse the error for better user feedback
+        error_msg = result["stderr"]
+        if "Cannot connect to the Docker daemon" in error_msg:
+            return {
+                "status": "warning",
+                "message": "Docker daemon is not running. Please start Docker Desktop.",
+                "error": "docker_not_running"
+            }
+        elif "missing separator" in error_msg:
+            return {
+                "status": "error", 
+                "message": "Configuration error detected. Using simplified startup method.",
+                "error": "config_error"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Failed to start lab: {error_msg[:500]}...",
+                "error": "general_error"
+            }
 
 @app.post("/api/lab/stop")
 async def stop_lab():
     """Stop all lab services."""
+    # Check if Docker is running first
+    docker_check = run_command("docker info")
+    if not docker_check["success"]:
+        if "Cannot connect to the Docker daemon" in docker_check["stderr"]:
+            return {
+                "status": "warning",
+                "message": "Docker is not running. No services to stop.",
+                "error": "docker_not_running",
+                "info": "Lab services are already stopped (Docker not running)"
+            }
+        else:
+            return {
+                "status": "error", 
+                "message": f"Docker check failed: {docker_check['stderr']}",
+                "error": "docker_error"
+            }
+    
     command = "docker-compose down"
     result = run_command(command)
     
     if result["success"]:
-        return {"status": "success", "message": "Lab stopped", "output": result["stdout"]}
+        return {"status": "success", "message": "Lab stopped successfully", "output": result["stdout"]}
     else:
-        raise HTTPException(status_code=500, detail=f"Failed to stop lab: {result['stderr']}")
+        # Parse the error for better user feedback
+        error_msg = result["stderr"]
+        if "Cannot connect to the Docker daemon" in error_msg:
+            return {
+                "status": "warning",
+                "message": "Docker daemon is not running. Services were already stopped.",
+                "error": "docker_not_running"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Failed to stop lab: {error_msg[:500]}...",
+                "error": "general_error"
+            }
 
 @app.get("/api/lab/status")
 async def get_lab_status():
